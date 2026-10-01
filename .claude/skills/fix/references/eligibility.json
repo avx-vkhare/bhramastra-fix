@@ -1,0 +1,21 @@
+{
+  "_comment": "Eligibility rules for /fix intake. Evaluated by scripts/eligibility.py. Edit here, not in SKILL.md.",
+  "components_in_scope": [
+    "Routing",
+    "BGP",
+    "Gateway-Platform",
+    "Controller Infrastructure",
+    "API",
+    "DCF",
+    "Micro-segmentation"
+  ],
+  "min_desired_version": "9.2",
+  "allowed_issuetypes": ["Bug", "Task", "Story"],
+  "excluded_statuses": ["Closed", "Done", "Resolved"],
+  "_repro_or_logs": "hard = missing both is INELIGIBLE; override = NEEDS_OVERRIDE (human decides); off = not checked",
+  "repro_or_logs": "override",
+  "severity": {
+    "hard_stop": false,
+    "allowed": ["S1", "S2", "S3", "S4"]
+  }
+}
