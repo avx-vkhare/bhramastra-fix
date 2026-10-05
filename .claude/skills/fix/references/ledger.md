@@ -35,7 +35,7 @@ hand-editing the file.
 | `skill_used` | agent | any | `skill`, `outcome` ok·failed·fallback·partial (reported) or ok·error (transcript), `detail`/`error`, `source` reported·transcript, `invoked_by` |
 | `ai_rating` | human | — | `rating` good·ok·poor, `note` — post-merge verdict via `/fix rate` |
 | `lessons_injected` | agent | intake·rca·plan·fix | `stage`, `ids` injected, `applied`, `not_applicable` (from `lessons.py verify`) |
-| `lessons_distilled` | agent | — | **written by `lessons.py propose`**: `phase` run_end·review·post_merge·manual, `proposed`, `reinforced`, `errors`, `consumed` (signal ids distilled: `rc-`/`rv-`/`ic-` review comments, `cm-` follow-up commits, `hf-` feedback, `me-` hand edits) |
+| `lessons_distilled` | agent | — | **written by `lessons.py propose`**: `phase` run_end·review·post_merge·manual, `proposed`, `reinforced`, `errors`, `consumed` (signal ids distilled: `rc-`/`rv-`/`ic-` review comments, `cm-` follow-up commits, `hf-` feedback, `me-` hand edits, `gd-` gate decisions, `ov-` overrides, `sf-` skill failures, `ar-` ratings) |
 | `lesson_review` | human | — | **written by `lessons.py review-set`**: `id`, `decision` approve·reject·retire, `edited` |
 
 Extra fields on existing events, used for AI-performance analytics:
@@ -59,7 +59,8 @@ Extra fields on existing events, used for AI-performance analytics:
 
 `harvest` finds every transcript mentioning the run_id (so resumed runs across
 sessions are covered), is idempotent per agent, and bounds the orchestrator
-window by `run_started`…`run_finished`. Tokens are raw counts (no $ — pricing
+window by `run_started` … the run's last event after `run_finished` (so the
+`fix-lessons` agent that Learn spawns after `run_finished` is counted). Tokens are raw counts (no $ — pricing
 changes); `tokens_cache_read` dominates and is cheap, `tokens_output` is the costly part.
 
 ## Derived report (`ledger.py report [--ticket T] [--csv]`)

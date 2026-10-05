@@ -234,8 +234,10 @@ def cmd_harvest(args) -> int:
         return 2
     evs = runs[args.run_id]
     ticket, since = evs[0]["ticket"], evs[0]["ts"]
+    # After run_finished only Learn runs (fix-lessons, then propose/review-set write
+    # their events), so the window ends at the run's last event other than harvest's own.
     finished = [e["ts"] for e in evs if e["event"] == "run_finished"]
-    until = finished[-1] if finished else None
+    until = max(e["ts"] for e in evs if e["event"] not in ("usage", "skill_used")) if finished else None
     have_agents = {e["data"].get("agent_id") for e in evs if e["event"] == "usage"}
     have_skills = {e["data"].get("tool_use_id") for e in evs if e["event"] == "skill_used"}
     last_orch = {e["data"].get("session"): e["data"] for e in evs
@@ -321,6 +323,8 @@ def summarize(run_id: str, evs: list[dict]) -> dict:
     finished = by("run_finished")
     if finished:
         status = finished[-1]["data"].get("outcome", "finished")
+        if status == "halted" and halted:
+            status = f"halted:{halted[-1]['data'].get('reason', '?')}"
     elif halted:
         status = f"halted:{halted[-1]['data'].get('reason', '?')}"
     else:

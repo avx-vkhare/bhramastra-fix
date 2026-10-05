@@ -98,7 +98,7 @@ Rules:
 
 Then: `python3 $LESSONS propose --run-id $RUN_ID --phase $PHASE --file <that file> --feedback $FEEDBACK`
 (`--feedback` marks these signals consumed so the next pass doesn't see them again; run it even with `[]`).
-Exit 1 → fix the reported candidates and re-run once.
+Exit 1 → nothing was written; fix the reported candidates and re-run once with the full list.
 
 ## Reply
 

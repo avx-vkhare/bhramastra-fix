@@ -43,7 +43,8 @@ GATE_OF_STAGE = {"rca": "gate1", "plan": "gate2"}
 MIN_TEXT = 20
 PHASES = ("run_end", "review", "post_merge", "manual")
 PR_PHASES = {"review", "post_merge"}
-APPLIED_RE = re.compile(r"LESSONS_APPLIED:\s*\n((?:[ \t]+-.*\n?)+)")
+RUN_END_ID_PREFIXES = ("gd-", "ov-", "sf-")
+APPLIED_RE = re.compile(r"LESSONS_APPLIED:\s*\n((?:[ \t]*[-*].*\n?)+)")
 
 
 def store_path() -> Path:
@@ -58,7 +59,15 @@ def load() -> list[dict]:
     p = store_path()
     if not p.exists():
         return []
-    return [json.loads(line) for line in p.read_text().splitlines() if line.strip()]
+    lessons = []
+    for n, line in enumerate(p.read_text().splitlines(), 1):
+        if not line.strip():
+            continue
+        try:
+            lessons.append(json.loads(line))
+        except json.JSONDecodeError:
+            print(f"lessons: skipping malformed line {n} of {p}", file=sys.stderr)
+    return lessons
 
 
 def save(lessons: list[dict]) -> None:
@@ -81,7 +90,8 @@ def run_events(run_id: str) -> list[dict]:
     return sorted(evs, key=lambda e: e["ts"])
 
 
-def gh_json(args: list[str]):
+def gh_json(args: list[str], many: bool = False):
+    """`many`: the caller wants a list (a `--jq '.[] | {...}'` stream may hold one object)."""
     proc = subprocess.run(["gh", *args], capture_output=True, text=True)
     if proc.returncode != 0:
         return None
@@ -89,9 +99,10 @@ def gh_json(args: list[str]):
     if not out:
         return []
     try:
-        return json.loads(out)
+        val = json.loads(out)
     except json.JSONDecodeError:   # --jq emits one JSON value per line
         return [json.loads(line) for line in out.splitlines() if line.strip()]
+    return [val] if many and not isinstance(val, list) else val
 
 
 def is_bot(login: str | None) -> bool:
@@ -112,7 +123,7 @@ def pr_feedback(pr: dict, consumed: set[str]) -> dict:
     inline = gh_json(["api", f"repos/{repo}/pulls/{number}/comments", "--paginate", "--jq",
                       ".[] | {id: (\"rc-\" + (.id|tostring)), user: .user.login, path, line: (.line // .original_line), "
                       "in_reply_to: .in_reply_to_id, body, url: .html_url, "
-                      "diff_hunk: (.diff_hunk | split(\"\\n\") | .[-6:] | join(\"\\n\"))}"]) or []
+                      "diff_hunk: (.diff_hunk | split(\"\\n\") | .[-6:] | join(\"\\n\"))}"], many=True) or []
     out["inline_comments"] = [c for c in inline if not is_bot(c.get("user")) and c["id"] not in consumed]
     view = gh_json(["pr", "view", number, "--repo", repo, "--json", "reviews,comments,commits"]) or {}
     out["reviews"] = [{"id": f"rv-{r.get('id')}", "user": (r.get("author") or {}).get("login"),
@@ -131,7 +142,7 @@ def pr_feedback(pr: dict, consumed: set[str]) -> dict:
                                  "message": c.get("messageHeadline")} for c in follow]
     if follow and pr.get("head_sha"):
         cmp = gh_json(["api", f"repos/{repo}/compare/{pr['head_sha']}...{follow[-1]['oid']}",
-                       "--jq", ".files[] | {filename, additions, deletions, patch}"]) or []
+                       "--jq", ".files[] | {filename, additions, deletions, patch}"], many=True) or []
         for f in cmp:
             f["patch"] = (f.get("patch") or "")[:3000]
         out["follow_up_diff"] = cmp
@@ -142,34 +153,40 @@ def cmd_feedback(args) -> int:
     evs = run_events(args.run_id)
     ticket = evs[0]["ticket"]
     cwd = (evs[0]["data"] or {}).get("cwd") or str(Path.cwd())
-    distilled = [e["data"] for e in evs if e["event"] == "lessons_distilled"]
+    distilled_evs = [e for e in evs if e["event"] == "lessons_distilled"]
+    distilled = [e["data"] for e in distilled_evs]
     consumed = {i for d in distilled for i in d.get("consumed") or []}
+    # Distillations written before run_end signals had ids consumed them by time only.
+    legacy_cut = max((e["ts"] for e in distilled_evs if (e["data"] or {}).get("phase") == "run_end"
+                      and not any(i.startswith(RUN_END_ID_PREFIXES) for i in e["data"].get("consumed") or [])),
+                     default="")
     signals = []
-    # run_end signals (gates, overrides, skill failures) are distilled once, at run end.
-    # Your own feedback and hand edits (ids hf-/me-) are picked up by any later pass;
-    # the /fix rate verdict only at post_merge.
-    for e in evs:
+    # Every signal has an id and is distilled once. Run-end signals (gates, overrides,
+    # skill failures) are offered at run_end — again on a later run_end if the run
+    # resumed and produced new ones. Your own feedback and hand edits (hf-/me-) are
+    # picked up by any pass; the /fix rate verdict (ar-) only at post_merge.
+    for n, e in enumerate(evs):
         d = e.get("data") or {}
+        sig = None
         if e["event"] in ("human_feedback", "manual_edit"):
-            sid = f"{'hf' if e['event'] == 'human_feedback' else 'me'}-{e['ts']}"
-            if sid in consumed:
-                continue
-            sig = {"id": sid, "source": e["event"], "ts": e["ts"], "stage": d.get("stage") or e.get("stage")}
+            sig = {"id": f"{'hf' if e['event'] == 'human_feedback' else 'me'}-{e['ts']}", "source": e["event"],
+                   "stage": d.get("stage") or e.get("stage")}
             sig.update({"quote": d.get("text")} if e["event"] == "human_feedback" else {"detail": d})
-            signals.append(sig)
         elif e["event"] == "ai_rating":
             if args.phase == "post_merge":
-                signals.append({"source": "ai_rating", "ts": e["ts"], "rating": d.get("rating"), "quote": d.get("note")})
-        elif args.phase != "run_end":
+                sig = {"id": f"ar-{e['ts']}", "source": "ai_rating", "rating": d.get("rating"), "quote": d.get("note")}
+        elif args.phase != "run_end" or (legacy_cut and e["ts"] <= legacy_cut):
             continue
         elif e["event"] == "gate_decision":
             if d.get("decision") != "approve" or d.get("feedback") or d.get("rating") in ("ok", "poor"):
-                signals.append({"source": f"{d.get('gate')}_{d.get('decision')}", "ts": e["ts"],
-                                "reason": d.get("reason"), "rating": d.get("rating"), "quote": d.get("feedback")})
+                sig = {"id": f"gd-{d.get('gate')}-{e['ts']}-{n}", "source": f"{d.get('gate')}_{d.get('decision')}",
+                       "reason": d.get("reason"), "rating": d.get("rating"), "quote": d.get("feedback")}
         elif e["event"] == "override":
-            signals.append({"source": e["event"], "ts": e["ts"], "stage": e.get("stage"), "detail": d})
+            sig = {"id": f"ov-{e['ts']}-{n}", "source": e["event"], "stage": e.get("stage"), "detail": d}
         elif e["event"] == "skill_used" and d.get("outcome") in ledger.SKILL_FAILED and d.get("source") == "reported":
-            signals.append({"source": "skill_failed", "ts": e["ts"], "skill": d.get("skill"), "quote": d.get("detail")})
+            sig = {"id": f"sf-{e['ts']}-{n}", "source": "skill_failed", "skill": d.get("skill"), "quote": d.get("detail")}
+        if sig and sig["id"] not in consumed:
+            signals.append({**sig, "ts": e["ts"]})
     halted = [e["data"] for e in evs if e["event"] == "halted"]
     pr = [e["data"] for e in evs if e["event"] == "pr_opened"]
     bundle = {
@@ -191,10 +208,8 @@ def cmd_feedback(args) -> int:
     prb = bundle.get("pr", {})
     pr_signal = bool(prb.get("inline_comments") or prb.get("reviews") or prb.get("comments")
                      or prb.get("follow_up_commits"))
-    if args.phase == "run_end" and "run_end" in bundle["already_distilled"]:
-        signals = bundle["signals"] = [x for x in signals if x.get("id")]   # only new hf-/me- signals
     bundle["signal_ids"] = sorted(
-        [s["id"] for s in signals if s.get("id")]
+        [s["id"] for s in signals]
         + [x["id"] for k in ("inline_comments", "reviews", "comments", "follow_up_commits") for x in prb.get(k) or []])
     bundle["has_signal"] = bool(signals or pr_signal)
     print(json.dumps(bundle, indent=2))
@@ -222,20 +237,24 @@ def cmd_propose(args) -> int:
     lessons = load()
     by_id = {item["id"]: item for item in lessons}
     created, reinforced, errors = [], [], []
+    # validate the whole batch first: a partial write would be re-created by the retry
     for i, c in enumerate(cands):
+        if c.get("action") == "reinforce":
+            if c.get("id") not in by_id:
+                errors.append(f"candidate {i}: reinforce of unknown id {c.get('id')!r}")
+        elif errs := validate(c):
+            errors.append(f"candidate {i}: " + "; ".join(errs))
+    if errors:
+        print(json.dumps({"proposed": [], "reinforced": [], "errors": errors,
+                          "note": "nothing written; fix the candidates and re-run"}, indent=2))
+        return 1
+    for c in cands:
         evidence = [{**ev, "run_id": args.run_id, "ticket": ticket} for ev in c.get("evidence") or []]
         if c.get("action") == "reinforce":
-            target = by_id.get(c.get("id"))
-            if not target:
-                errors.append(f"candidate {i}: reinforce of unknown id {c.get('id')!r}")
-                continue
+            target = by_id[c["id"]]
             target.setdefault("evidence", []).extend(evidence)
             target["updated"] = now()
             reinforced.append(target["id"])
-            continue
-        errs = validate(c)
-        if errs:
-            errors.append(f"candidate {i}: " + "; ".join(errs))
             continue
         lid = next_id(lessons)
         item = {
@@ -252,8 +271,8 @@ def cmd_propose(args) -> int:
     ledger.write_event(args.run_id, ticket, "lessons_distilled", None, "agent",
                        {"phase": args.phase, "proposed": created, "reinforced": reinforced, "errors": errors,
                         "consumed": consumed})
-    print(json.dumps({"proposed": created, "reinforced": reinforced, "errors": errors}, indent=2))
-    return 1 if errors else 0
+    print(json.dumps({"proposed": created, "reinforced": reinforced, "errors": []}, indent=2))
+    return 0
 
 
 def cmd_review_set(args) -> int:
@@ -396,7 +415,7 @@ def parse_applied(text: str) -> dict[str, tuple[str, str]]:
     m = APPLIED_RE.search(text)
     out = {}
     for line in (m.group(1).splitlines() if m else []):
-        item = re.match(r"\s*-\s*`?(L-\d+)`?\s*[—:-]+\s*(applied|not_applicable)\s*[—:-]+\s*(.*)$", line)
+        item = re.match(r"\s*[-*]\s*`?(L-\d+)`?\s*[—–:-]+\s*`?(applied|not_applicable)`?\s*[—–:(-]*\s*(.*?)\)?\s*$", line)
         if item:
             out[item.group(1)] = (item.group(2), item.group(3).strip())
     return out

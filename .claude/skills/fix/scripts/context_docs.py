@@ -169,10 +169,10 @@ MIN_TAKEAWAY_CHARS = 20
 def verify(artifact: Path, required: list[str]) -> list[str]:
     """Return required docs missing a specific takeaway in the artifact's CONTEXT_LOADED block."""
     text = artifact.read_text() if artifact.is_file() else ""
-    m = re.search(r"CONTEXT_LOADED:\s*\n((?:[ \t]+-.*\n?)+)", text)
+    m = re.search(r"CONTEXT_LOADED:\s*\n((?:[ \t]*[-*].*\n?)+)", text)
     loaded: dict[str, str] = {}
     for line in (m.group(1).splitlines() if m else []):
-        item = re.match(r"\s*-\s*`?([^`\s]+)`?\s*[—:-]+\s*(.*)$", line)
+        item = re.match(r"\s*[-*]\s*`?([^`\s]+?)`?:?\s+[—–:-]*\s*(.*)$", line)
         if item:
             loaded[item.group(1)] = item.group(2).strip()
     missing = []
