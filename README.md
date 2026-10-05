@@ -41,16 +41,28 @@ copy above overwrites files with the same name.
 
 ## Use
 
-```
-/fix check AVX-N                   # is it a candidate? (no branch or code changes; writes .bhramastra/AVX-N/ + ledger)
-/fix AVX-N [hint…]                 # full run; answer Gates 1, 2 and 3
-/fix resume AVX-N                  # continue an interrupted run
-/fix review-handle AVX-N           # answer review comments (Gate R1 + R2, then push + replies)
-/fix learn AVX-N                   # review comments came in → proposed lessons
-/fix teach AVX-N "<feedback>"      # your own lesson for that run
-/fix rate AVX-N good|ok|poor "…"   # after merge
-/fix status --refresh · /fix analytics · /fix lessons review
-```
+Every `/fix` subcommand (same list as `/fix help`):
+
+| Command | What it does |
+|---|---|
+| **Run** | |
+| `/fix check AVX-N [hint…]` | Is it a candidate? Intake + eligibility only; no branch or code changes (writes `.bhramastra/AVX-N/` + a ledger entry) |
+| `/fix AVX-N [hint…]` | Full run: RCA + red test → Gate 1 → plan → Gate 2 → fix → Gate 3 → draft PR |
+| `/fix AVX-N --dry-run [hint…]` | Same, but stops before Gate 3 — nothing committed or pushed |
+| `/fix resume AVX-N [hint…]` | Continue an interrupted or halted run (a new hint replaces the old one) |
+| **Review** | |
+| `/fix review-handle AVX-N [--dry-run]` | Answer the PR's review comments: triage → Gate R1 → fix → Gate R2 → push + in-thread replies; then learns from them |
+| **Teach it** | |
+| `/fix learn AVX-N` | Lessons from new PR review comments and follow-up commits (repeatable; each comment once) |
+| `/fix teach AVX-N "<feedback>"` | Lessons from your own feedback on that run |
+| `/fix teach "<rule>"` | Write a lesson directly, no ticket (approved on entry after one confirmation) |
+| `/fix rate AVX-N good\|ok\|poor ["note"]` | Your verdict after merge/close, plus post-merge lessons |
+| `/fix lessons [review]` | Review proposed lessons (approve / reword / reject) |
+| `/fix lessons list \| gaps \| stats` | Approved lessons · doc-gap lessons · per-lesson effectiveness |
+| **Look** | |
+| `/fix status [AVX-N] [--refresh]` | Ledger report per run; `--refresh` pulls PR state from GitHub first |
+| `/fix analytics` | Funnel, first-pass rates, reasons, tokens, skill failures, lessons impact |
+| `/fix help` | This list and the flow diagram |
 
 ## Layout
 

@@ -33,6 +33,9 @@ How to use it step by step: [WORKFLOW.md](WORKFLOW.md). Team deck:
 /fix analytics                    # how is the pipeline doing overall?
 ```
 
+All subcommands: [WORKFLOW.md § Command reference](WORKFLOW.md#command-reference)
+or the repo [README](../../../README.md#use).
+
 ## Contents
 
 | Path | Role |
