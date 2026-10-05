@@ -18,26 +18,61 @@ only from lessons you approve.
 - Example run: [`.claude/skills/fix/README.md`](.claude/skills/fix/README.md)
 - Team deck source: [`.claude/skills/fix/docs/presentation.md`](.claude/skills/fix/docs/presentation.md)
 
-## Install (user level; nothing goes into cloudn)
+## Install on a new machine
+
+`/fix` is installed per user. Nothing goes into the cloudn repo. The install
+**links** your clone into Claude Code, so a later `git pull` updates `/fix`
+in place.
+
+**1. Check the requirements**
+
+- Claude Code (`claude` on your PATH), a cloudn checkout, `git`, `jq`, `bazel` (version 8, as master uses), and Python **3.10 or newer**.
+- The GitHub CLI, logged in: `gh auth login`, then `gh auth status`. It must be able to see this private repo and `AviatrixDev/cloudn`.
+- Optional, for tracelog bundles: AWS SSO and the avx-tool-shed skills `net-download-tracelog` and `net-topology`.
+
+**2. Clone and run the installer**
 
 ```bash
-git clone git@github.com:avx-vkhare/bhramastra-fix.git
-cd bhramastra-fix
-cp -a .claude/. ~/.claude/                     # skill → ~/.claude/skills/fix, agents → ~/.claude/agents/fix-*.md
-mkdir -p ~/.bhramastra
-cp -n lessons/seed-lessons.jsonl ~/.bhramastra/lessons.jsonl   # optional: shared approved lessons (won't overwrite yours)
+gh repo clone avx-vkhare/bhramastra-fix ~/bhramastra-fix   # or: git clone git@github.com:avx-vkhare/bhramastra-fix.git ~/bhramastra-fix
+cd ~/bhramastra-fix
+./install.sh
 ```
 
-If you already have an older `~/.claude/skills/fix`, back it up first. The
-copy above overwrites files with the same name.
+The installer does the following, and is safe to re-run:
 
-**Requirements:**
-- Run Claude Code from the cloudn root.
-- `gh auth status` must be OK.
-- The Jira MCP server must be connected (`/mcp`).
-- `bazel` (version 8, as master uses), `jq` and `python3`.
-- AWS SSO, for tracelog bundles.
-- The `net-download-tracelog` and `net-topology` skills (avx-tool-shed).
+| Creates | Pointing to / containing |
+|---|---|
+| `~/.claude/skills/fix` (symlink) | `~/bhramastra-fix/.claude/skills/fix` — the orchestrator, scripts and references |
+| `~/.claude/agents/fix-*.md` (symlinks) | `~/bhramastra-fix/.claude/agents/fix-*.md` — the stage agents |
+| `~/.bhramastra/` | your run ledger and lessons; `lessons.jsonl` is seeded from `lessons/seed-lessons.jsonl` only if you don't have one yet |
+
+If something is already at one of those paths (for example an older copied
+install), it is moved to `~/.claude/fix-backup-<timestamp>/`, never deleted.
+At the end the installer checks the tools above and prints ✓ or ✗ for each.
+
+**3. Check it works, from cloudn**
+
+```bash
+cd <your cloudn checkout>
+claude
+```
+
+Then, inside Claude Code:
+
+```
+/mcp                  # jira should be listed as connected (cloudn's .mcp.json provides it)
+/fix help             # prints the subcommands and the flow
+/fix check AVX-N      # eligibility only, a safe first run
+```
+
+**Later**
+
+| To | Run |
+|---|---|
+| Update | `git -C ~/bhramastra-fix pull`. Re-run `./install.sh` only if a new agent file was added |
+| Check the links and tools | `~/bhramastra-fix/install.sh --check` |
+| Move the clone | Move it, then run `./install.sh` from the new place; it re-points the links |
+| Uninstall | `~/bhramastra-fix/install.sh --uninstall`. This removes only the links; `~/.bhramastra/` is kept |
 
 ## Use
 
@@ -71,6 +106,7 @@ Every `/fix` subcommand (same list as `/fix help`):
 | `.claude/skills/fix/SKILL.md` | the orchestrator: stages, gates, ledger, learning, resume |
 | `.claude/agents/fix-{intake,rca,planner,coder,responder,lessons}.md` | the stage subagents, run one at a time on Opus |
 | `.claude/skills/fix/references/` | eligibility rules, guardrails, handoff formats, testing, ledger, lessons |
+| `install.sh` | links the skill and agents into `~/.claude`, seeds `~/.bhramastra/`, checks tools |
 | `.claude/skills/fix/scripts/` | the deterministic parts: `eligibility.py`, `context_docs.py`, `ledger.py`, `lessons.py`, `fix_probe.py`, `fix_guard.py`, `fix_review.py` (Python stdlib only) |
 | `lessons/seed-lessons.jsonl` | approved lessons from the pilot runs |
 | `docs/design-plan.md` | the original design plan (historical) |
