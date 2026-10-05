@@ -10,7 +10,8 @@ This page covers what you do at each step.
  /fix check AVX-N  ──►  intake + eligibility ──► ELIGIBLE?
  /fix AVX-N        ──►  branch · logs · RCA + red test ──►  GATE 1  approve / revise / reject
                         plan                           ──►  GATE 2  approve / revise / reject
-                        fix · targeted tests · draft PR ──►  review + merge (normal PR flow)
+                        fix · targeted tests · checks  ──►  GATE 3  see the diff → commit · push · draft PR
+                                                       ──►  review + merge (normal PR flow)
                         lessons from your feedback     ──►  approve / reword / reject lessons
  /fix learn AVX-N  ──►  lessons from PR review comments ──►  approve / reword / reject lessons
  /fix teach AVX-N  ──►  lessons from your own feedback  ──►  approve / reword / reject lessons
@@ -35,8 +36,8 @@ Infrastructure, API, DCF or Micro-segmentation; desired version **≥ 9.2**;
 but never blocks. No repro and no logs → **NEEDS_OVERRIDE**: you can continue
 if you describe how to reproduce it or where to look (that text becomes the hint).
 
-Not sure? Dry-run the eligibility check — no branch, no logs, nothing written
-to the repo:
+Not sure? Dry-run the eligibility check — no branch, no logs, no code
+changes (it only writes `.bhramastra/AVX-N/` and a ledger entry):
 
 ```
 /fix check AVX-N
@@ -46,7 +47,7 @@ to the repo:
 
 ```
 /fix AVX-N                                   # full pipeline
-/fix AVX-N --dry-run                         # everything up to commit; prints the git/gh commands instead
+/fix AVX-N --dry-run                         # everything up to Gate 3; nothing committed or pushed
 /fix AVX-N look at bgp_translator.go learned-route filtering   # with a hint
 ```
 
@@ -60,14 +61,19 @@ hinted runs pass Gate 1 more often.
 `/fix` will:
 1. **Intake** — read the ticket and show `TICKET_FACTS` + a criteria table.
    `NEEDS_OVERRIDE` → you choose *Override* or *Stop* (overrides are recorded).
-2. **Branch** — `git switch -f -C <you>/AVX-N-<slug> origin/master`.
+2. **Branch** — `git switch -c <you>/AVX-N-<slug> origin/master`. It never
+   resets an existing branch: if a branch or open PR for the ticket already
+   exists, `/fix` asks whether to start on a new branch name or stop.
    ⚠️ Tracked local changes are stashed first (`fix-AVX-N-autostash-…`) —
-   commit or park your work before starting.
+   commit or park your work before starting. Untracked files are left alone
+   and never count as the run's changes.
 3. **Logs** — download tracelog bundles / Jira attachments into
    `.bhramastra/AVX-N/logs/`. If AWS auth fails it shows the SSO URL + code
    and **waits for you**. It never silently continues without logs.
 4. **RCA + red test** — the agent finds the root cause and writes **one unit
    test** (Go or Python, where the bug starts) that fails on master for that reason.
+   `/fix` then re-runs that test itself and only shows Gate 1 if it really
+   fails with the failure the RCA claims.
 
 ## 3. GATE 1 — is this the real bug?
 
@@ -96,16 +102,24 @@ planner's reason** — it's your call, not an automatic stop. Once you approve,
 the code is held to *that plan*: new files or >2× the estimated lines halt
 with `PLAN_DRIFT` before the commit.
 
-**Approving Gate 2 authorizes exactly one commit series, one push of the
-branch, and one draft PR.** Nothing else. Same Approve / Revise / Reject +
+**Approving Gate 2 lets the fix agent edit code and run the targeted tests —
+nothing is committed or pushed yet.** Same Approve / Revise / Reject +
 quality + reason (*wrong approach · too broad · missing tests · risk not addressed*).
 
-## 5. Fix → draft PR
+## 5. Fix → GATE 3 → draft PR
 
-The fix agent implements only the plan, turns the red test green, runs **only
-the targeted unit tests** (no e2e, no `make test-branch`), checks guardrails,
-commits (`AVX-N: …`), pushes and opens a **draft PR** labelled `bhramastra`.
-The handoff prints the PR, the repro command, tokens, and next steps.
+The fix agent implements only the plan, turns the red test green and runs
+**only the targeted unit tests** (no e2e, no `make test-branch`). It does not
+commit. `/fix` then checks the real diff itself (plan drift, denied paths,
+ticket refs in comments), re-runs the repro test to see it pass, and shows you
+the diff stat, commit message and PR title:
+
+> **GATE 3** — *Commit these files, push `<branch>` and open a draft PR?*
+> *Commit, push and open draft PR* / *Stop* / or type a change request.
+
+Only on your yes does a script commit (`AVX-N: …`), push and open the **draft
+PR** labelled `bhramastra` — exactly the diff you saw. The handoff prints the
+PR, the repro command, tokens, and next steps.
 
 From here it's a normal PR: `make test-branch` if you want the full blast
 radius, `/pr-review <N>`, `/pr-comments <N>`, mark ready, merge.
@@ -140,8 +154,8 @@ A HALT is a normal outcome, not a crash. It tells you what it needs:
 | `REPRO_FAILED` / `NEEDS_E2E` | no unit test can reproduce it | fix by hand, or add repro detail and re-run |
 | `AMBIGUOUS_RCA` | evidence points several ways | add logs / narrow the ticket |
 | `OUT_OF_SCOPE` / `UNRELATED_FILES` | plan touches denied paths, generated code, or files the RCA didn't implicate | take the plan and do it manually |
-| `PLAN_DRIFT` | the code grew beyond the plan you approved (new files, new BUILD deps, or >2× lines) | revise the plan (`/fix resume`, Gate 2 again) or take over the branch |
-| `STYLE` | added comments cite the ticket / PR | follow-up commit (with your OK), or take over |
+| `PLAN_DRIFT` | the code grew beyond the plan you approved (new files, new BUILD deps, or >2× lines); caught before any commit | revise the plan (`/fix resume`, Gate 2 again) or take over the branch |
+| `STYLE` | added comments still cite the ticket / PR after one automatic retry (nothing committed) | `/fix resume AVX-N`, or take over |
 | `TESTS_FAILING` / `FIX_INCOMPLETE` | 2 red→green attempts failed | take over the branch |
 | `CONTEXT_MISSING` / `TOOL_ERROR` | docs/tools unavailable | fix env, `/fix resume AVX-N` |
 

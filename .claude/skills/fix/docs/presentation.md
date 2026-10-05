@@ -65,12 +65,12 @@ Notes: The numbers come from 1,779 merged master PRs (Apr–Aug 2026).
 /fix AVX-N [hint]
 Jira ─► Intake ─► Eligible? ─(no repro/logs? override 👤)─► Branch ─► Logs
      ─► RCA + RED TEST ─► GATE 1 👤 ─► Plan ─► GATE 2 👤
-     ─► Fix + targeted tests ─► DRAFT PR ─► Review / merge 👤
+     ─► Fix + targeted tests ─► GATE 3 👤 (the diff) ─► DRAFT PR ─► Review / merge 👤
      ─► feedback (script) ─► proposed lessons (AI) ─► approve 👤
      ─► next similar ticket: matching lessons injected (script) ─► agent follows them
 ```
 
-- 👤 = a human decision. The AI never merges, never marks the PR ready, and never pushes without Gate 2.
+- 👤 = a human decision. The AI never merges, never marks the PR ready, and nothing is committed or pushed before you see the diff at Gate 3.
 - Optional **hint**: "look at bgp_translator.go". It's a place to start, not evidence.
 - The learning step runs automatically at the end of every run. Only the approval is yours.
 
@@ -151,7 +151,7 @@ caught here costs nothing.
   - shown **first** at Gate 2 as ⚠, with the planner's reason it can't be smaller;
   - **you decide**; it isn't an automatic stop.
 - A denied path, or a file the RCA didn't point to, stops the run before any code is written.
-- **Approving Gate 2 authorizes exactly one commit series, one push and one draft PR.**
+- **Approving Gate 2 authorizes code edits and targeted tests only.** The commit and push wait for Gate 3.
 
 Notes: We already have a human looking at the plan, so stopping on size
 before the gate would take the decision away from them.
@@ -162,17 +162,19 @@ before the gate would take the decision away from them.
 
 - Implements only the approved plan.
 - Checks red → green, then runs **only the targeted unit tests** (fast; no e2e).
-- **Plan-drift check** before committing. The run stops (`PLAN_DRIFT`) if either:
-  - a non-test file was changed that isn't in the approved plan;
+- **Plan-drift check** by a script, before anything is committed. The run stops (`PLAN_DRIFT`) if:
+  - a non-test file was changed (or created) that isn't in the approved plan;
   - the non-test lines exceed 2× the plan's estimate.
-- Commits `AVX-N: …`, pushes, and opens a **draft** PR labelled `bhramastra`.
+- The orchestrator re-runs the repro test itself: it must pass, and the test must actually have run.
+- **Gate 3**: you see the diff stat, commit message and PR title → *Commit, push and open draft PR?*
+- Only then a script commits `AVX-N: …`, pushes, and opens a **draft** PR labelled `bhramastra` — exactly the approved diff.
   - The PR body includes the root cause, the exact test commands and provenance.
-- The orchestrator re-checks the real diff and the PR itself instead of trusting the agent.
 - From here it's our normal flow: `make test-branch`, `/pr-review`, `/pr-comments`, merge.
 
-Notes: After Gate 2 nobody looks at the code before the push. So the check
-that protects us is "does the code match what I approved?", not an absolute
-line count.
+Notes: The plan-drift check guards "does the code match the plan I approved?",
+not an absolute line count. Gate 3 is one extra click so that a commit and
+push only ever happen after a human has seen the real diff (per-commit,
+per-push consent, as cloudn's CLAUDE.md asks).
 
 ---
 
@@ -282,9 +284,9 @@ retrained anything, and no lesson reached a ticket it wasn't scoped to.
 
 | Automatic, in order, inside `/fix AVX-N` | You run |
 |---|---|
-| intake → eligibility → branch → logs → RCA | Gate 1 and Gate 2 decisions |
+| intake → eligibility → branch → logs → RCA | Gate 1, Gate 2 and Gate 3 decisions |
 | plan (after Gate 1) | the override, if the ticket has no repro and no logs |
-| fix → tests → draft PR (after Gate 2) | the AWS SSO code, if it has expired |
+| fix → tests → checks (after Gate 2); commit, push, draft PR (after Gate 3) | the AWS SSO code, if it has expired |
 | token / model / skill recording after every agent | approving proposed lessons |
 | lessons proposed at the end of the run | `/fix status --refresh` — PR state (not polled yet) |
 | | `/fix learn AVX-N`: lessons from review comments, during review |
@@ -337,7 +339,7 @@ Spoke loses BGP routes after transit HA failover.
 
 ```
 /fix check AVX-N                  # candidate? (no side effects)
-/fix AVX-N                        # run; answer Gate 1 and Gate 2
+/fix AVX-N                        # run; answer Gates 1, 2 and 3
 /fix AVX-N look at bgp_translator.go peer matching   # with a hint
 /fix resume AVX-N                 # continue an interrupted run
 /fix status --refresh             # PR state

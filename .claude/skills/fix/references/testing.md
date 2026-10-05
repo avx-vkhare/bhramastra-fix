@@ -31,6 +31,11 @@ bazel test //go/aviatrix.com/<pkg>:<pkg>_test --test_output=errors
 `.bazelrc` already enables `-race` and verbose test output. For a suspected
 race, add `--config=flake-debug` (30 runs).
 
+The orchestrator re-runs the repro command with `--nocache_test_results
+--test_output=all --test_arg=-test.v` and looks for `--- FAIL: <NAME>` /
+`--- PASS: <NAME>`. A `--test_filter` that matches nothing still exits 0
+(`testing: warning: no tests to run`) — that counts as **no tests**, not green.
+
 ## Python
 
 - Test beside existing tests for the module (`test_*.py` / `*_test.py`),

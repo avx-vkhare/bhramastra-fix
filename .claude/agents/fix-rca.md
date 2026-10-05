@@ -81,6 +81,10 @@ If `HINT` ≠ none, add a `HINT_CHECK` line right after the block (format in
   the assertion that encodes the bug — not compile/import/fixture/timeout errors.
   If after a genuine attempt the correct-behaviour assertion **passes** on master,
   your RCA is wrong: revise the RCA once; if it still passes, halt `REPRO_FAILED`.
+- The orchestrator re-runs `REPRO_TEST.COMMAND` itself and accepts it only if
+  bazel exits 3 and the `FAILURE` text appears in the output. So `COMMAND` is
+  one plain `bazel test …` (no `cd`, env vars, pipes or `&&`), and `FAILURE`
+  is copied verbatim from that output.
 - Touch only test files (and `BUILD.bazel` via `bazel run //:gazelle -- fix <pkg>`
   if a new test file needs registering). No production code.
 - Assert on behaviour (returned state, emitted config), not on log lines; use
@@ -103,7 +107,8 @@ files in `PROBE.nontest_dirty` → `HALT UNRELATED_FILES`.
 - `$ART/rca.md`: `CONTEXT_LOADED`, `LESSONS_APPLIED`, `ROOT_CAUSE_ANALYSIS`, `HINT_CHECK` (if hinted), `REPRO_TEST`, then a
   short "Investigation notes" section (per lens, ≤10 lines each), then
   `SKILLS_USED` (e.g. net-topology — did it answer what you asked it?).
-- `$ART/repro.diff`: `git diff -- <test files>` plus `git status --porcelain` output.
+- `$ART/repro.diff`: `git diff -- <test files>` plus the full content of any new
+  test file (it is untracked, so `git diff` won't show it).
 - `$ART/repro.out`: the last ~40 lines of the failing bazel output.
 
 ## Reply

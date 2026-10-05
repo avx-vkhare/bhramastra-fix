@@ -16,17 +16,21 @@ step in the ledger. Only you talk to the user; subagents cannot.
 
 ```
 Jira → [intake] → eligibility → branch → [logs] → [rca + red test] → GATE 1
-     → [planner] → GATE 2 → [fix + targeted tests + draft PR] → human review/merge
+     → [planner] → GATE 2 → [fix + targeted tests] → GATE 3 (diff) → commit · push · draft PR
+     → human review/merge
 every run end / after merge → [lessons] → you approve → injected into future runs
 ```
+
+Agents never commit or push. Tree changes, red/green and commit/push/PR go
+through `scripts/fix_guard.py`; an agent's own report is context, not evidence.
 
 ## Dispatch (first word, case-insensitive)
 
 | Input | Action |
 |---|---|
 | empty / `help` | Print this table and the flow diagram; stop |
-| `AVX-<n> [--dry-run] [hint…]` | Full pipeline. `--dry-run` stops the fix agent before commit |
-| `check AVX-<n> [hint…]` | Stages 0–1 only (eligibility dry run); no branch, no logs |
+| `AVX-<n> [--dry-run] [hint…]` | Full pipeline. `--dry-run` stops before Gate 3 (nothing committed or pushed) |
+| `check AVX-<n> [hint…]` | Stages 0–1 only (eligibility dry run); no branch, no logs, no repo changes (writes only `.bhramastra/<T>/` and the ledger) |
 | `resume AVX-<n> [hint…]` | Continue from `.bhramastra/<T>/state.json` |
 | `status [AVX-<n>] [--refresh]` | `--refresh` → `ledger.py refresh-prs`; then `ledger.py report [--ticket T]`; print as a table; stop |
 | `rate AVX-<n> <good\|ok\|poor> [note]` | `ledger.py rate --ticket T --rating R --note "<note>"` — your verdict on how the AI did (best after merge/close); then **Learn** with `PHASE=post_merge`; stop |
@@ -53,6 +57,7 @@ SK=$HOME/.claude/skills/fix                     # user-level skill (not in the r
 L="python3 $SK/scripts/ledger.py"
 CTX="python3 $SK/scripts/context_docs.py --repo-root $REPO"
 LS="python3 $SK/scripts/lessons.py --repo-root $REPO"
+G="python3 $SK/scripts/fix_guard.py"              # snapshots, change checks, repro re-runs, ship
 ART=$REPO/.bhramastra/$T                          # per-ticket artifacts (persist; never deleted)
 ```
 
@@ -74,7 +79,12 @@ ART=$REPO/.bhramastra/$T                          # per-ticket artifacts (persis
   whether the skill *did its job* (ok / failed / fallback / partial), not whether it loaded.
 - **State:** after every stage update `$ART/state.json`:
   `{ticket, run_id, stage, branch, logs_dir, iterations:{rca,plan,fix}, updated_at}`
-  plus `hint`, where `stage ∈ intake|branch|logs|rca|gate1|plan|gate2|fix|done|halted`.
+  plus `hint`, where `stage ∈ intake|branch|logs|rca|gate1|plan|gate2|fix|gate3|done|halted`.
+  Every run end writes a final state: `done` (with `outcome`) or `halted`.
+- **Read-only agents are checked.** Before spawning `fix-intake` or `fix-planner`:
+  `$G snapshot --out $ART/tree-pre-<stage>.json`; after it returns:
+  `$G check --baseline $ART/tree-pre-<stage>.json --stage readonly` — exit 1 →
+  `HALT UNRELATED_FILES` with its `diffstat` (never revert the files yourself).
 - Formats: `references/handoff-formats.md`. Limits: `references/guardrails.md`.
   Tests: `references/testing.md`. Lessons: `references/lessons.md`.
 
@@ -151,10 +161,12 @@ python3 $SK/scripts/fix_probe.py --ticket $T --branch $BRANCH --stage <rca|fix> 
 (`RUN_ID`, `BRANCH`, iterations). Reuse the run — do not `start` a new one.
 - `stage` intake / plan → re-spawn that agent.
 - `gate1` / `gate2` → re-show the gate from `rca.md` / `plan.md`; no agent.
+- `gate3` → Stage 4 step 3 (checks again, then Gate 3); no agent.
 - `halted`: TOOL_ERROR / CONTEXT_MISSING → resume at `halted_at`;
-  PLAN_DRIFT → re-run Stage 3 with the drift as `GATE_FEEDBACK`, then Gate 2
-  again (the branch keeps its commits); STYLE → fix-coder with `RESUME: dirty`
-  and the hits as `GATE_FEEDBACK` (the follow-up commit needs the user's OK).
+  PLAN_DRIFT → re-run Stage 3 with the drift as `GATE_FEEDBACK`, Gate 2 again,
+  then fix-coder with `RESUME: dirty` (its edits are still uncommitted on the
+  branch); STYLE → fix-coder with `RESUME: dirty` and the hits as `GATE_FEEDBACK`.
+  Both then go through Stage 4 step 3 and Gate 3 as normal.
 - `rca` / `fix` → probe, then:
 
 | `case` | Meaning | Action |
@@ -162,14 +174,12 @@ python3 $SK/scripts/fix_probe.py --ticket $T --branch $BRANCH --stage <rca|fix> 
 | `wrong_branch` | HEAD isn't `BRANCH` | tree clean → `git switch $BRANCH`, probe again. Dirty → AskUserQuestion (*Switch anyway — the edits are this run's* / *Stop*); never stash or force |
 | `clean` | nothing done yet | run the stage normally |
 | `dirty` | uncommitted edits (maybe also commits or a PR) | re-spawn the stage agent with a `RESUME:` block (below) |
-| `committed` | fix commits, not pushed | fix-coder with `RESUME:` — verify commits vs plan, run tests, push, PR |
-| `pushed_no_pr` | pushed, no PR | fix-coder with `RESUME:` — open the draft PR only |
-| `pr_open` | PR head == HEAD, clean | no agent: run the Stage 4 independent checks, then `pr_opened` (if not in the ledger yet) → Stage 5 |
+| `committed` / `pushed_no_pr` | `ship` was interrupted after commit / push | no agent: Stage 4 step 3 checks. Same `fingerprint` as an approved Gate 3 in the ledger → re-run `ship` (it skips what's done); else Gate 3 again |
+| `pr_open` | PR head == HEAD, clean | no agent: Stage 4 step 3 checks, then `pr_opened` (if not in the ledger yet) → Stage 5 |
 
-For rca, `nontest_dirty` non-empty → `HALT UNRELATED_FILES` as usual.
-`stage_started {iteration, resumed: <case>}` before re-spawning. Gate 2 still
-covers the resumed fix: one commit series, one push, one draft PR in total —
-if a PR exists, push updates it; never open a second one.
+For rca, run `$G check --stage rca` as in Stage 2. `stage_started {iteration,
+resumed: <case>}` before re-spawning. One run = one commit series, one push,
+one draft PR — `ship` reuses an open PR for the branch and never opens a second.
 
 Prompt addition for a resumed agent (after `GATE_FEEDBACK`):
 
@@ -180,11 +190,11 @@ Keep the existing edits and commits. Review each against the approved
 rca.md/plan.md, complete or correct them, then continue your normal steps.
 ```
 
-On any `HALT` block from an agent: append `halted` (reason, detail), set
+On any `HALT` block from an agent (or a halt verdict from `fix_guard.py`): append `halted` (reason, detail), set
 state `halted` (plus `halted_at: <stage>`, `halt_reason: <reason>`), append `run_finished {outcome: halted}`, `$L harvest`, show the user the
 HALT block and `NEXT`, run **Learn** (`PHASE=run_end`), and stop.
 
-Every `run_finished` (halted, rejected_gate1/2, pr_opened, dry_run) is followed
+Every `run_finished` (halted, rejected_gate1/2/3, pr_opened, dry_run) is followed
 by **Learn** with `PHASE=run_end`. Skip it only for `ineligible` / `checked`
 runs with no override.
 
@@ -204,13 +214,20 @@ runs with no override.
    *Resume from `<stage>`* / *Start fresh*. Resume → follow **Interrupted agents
    and resume** below (it reads the branch state; never stash or `switch -f`
    on resume). Fresh → continue (Stage 1a stashes tracked changes first).
-5. Fresh: `RUN_ID=$($L start --ticket $T [--hint "$HINT"])`; write state (include `hint`).
+5. **Re-run guard** (fresh full runs; for `check` just list the hits): `$G existing --ticket $T` → exit 1 means a
+   local branch, remote branch or open PR for `$T` already exists (e.g. a run
+   that reached `done`). Show them and AskUserQuestion: *Start on a new branch*
+   (Stage 1a takes the `suggested` name) / *Stop* (review follow-ups on an
+   existing PR go through `/pr-comments`, not a new run). Never reset or reuse
+   an existing branch for a fresh run.
+6. Fresh: `RUN_ID=$($L start --ticket $T [--hint "$HINT"])`; write state (include `hint`).
    Resume: keep `run_id` from state (no new `start`); read `hint` from state; a
    new hint given with `resume` replaces it.
 
 ## Stage 1 — Intake (agent `fix-intake`)
 
-`stage_started intake` → spawn `fix-intake` → verify context → then:
+`stage_started intake` → snapshot → spawn `fix-intake` → read-only check →
+verify context → then:
 
 ```bash
 python3 $SK/scripts/eligibility.py $ART/facts.json > $ART/eligibility.json; echo "exit=$?"
@@ -220,16 +237,18 @@ $L append --run-id $RUN_ID --event eligibility --stage intake --data-file $ART/e
 Show the user the `TICKET_FACTS` block and a criteria table
 (criterion · status · detail) from `eligibility.json`.
 
-- `INELIGIBLE` (exit 1) → `run_finished {outcome: ineligible}`; stop.
+- `INELIGIBLE` (exit 1) → `run_finished {outcome: ineligible}`; state `done`
+  (`outcome: ineligible`); stop.
 - `NEEDS_OVERRIDE` (exit 2) → AskUserQuestion: *Override and continue* /
   *Stop*. Override → `override` event (actor human, criteria, reason). Stop →
-  `run_finished {outcome: ineligible}`.
+  `run_finished {outcome: ineligible}`; state `done` (`outcome: ineligible`).
   When `repro_or_logs` is the criterion (no repro, no logs), the question says
   so and asks for **how to reproduce or where to look** (free text via
   "Other"). Record that text as the override `reason`, append it to `HINT`
   (`user repro: <text>`), save it in state, and pass it to RCA. RCA then works
   from ticket text + code only; a thin trail should end in `AMBIGUOUS_RCA`, not a guess.
-- `ELIGIBLE` → continue. (`check` subcommand: `run_finished {outcome: checked}`; stop.)
+- `ELIGIBLE` → continue. (`check` subcommand: `run_finished {outcome: checked}`;
+  state `done` (`outcome: checked`) so a later `/fix <T>` starts fresh; stop.)
 
 Severity is a warning only — show it, never stop on it. Criteria with status
 `needs_override` are shown as ⚠ with the question above.
@@ -238,13 +257,18 @@ Severity is a warning only — show it, never stop on it. Criteria with status
 
 ```bash
 git fetch origin master
-git stash push -m "fix-$T-autostash-$RUN_ID" || true     # tracked changes only; untracked files are left alone
 SLUG=$(jq -r '.summary // empty' $ART/facts.json | tr 'A-Z' 'a-z' | tr -cs 'a-z0-9' '-' | cut -d- -f1-5 | sed 's/-$//')
 BRANCH="$(git config user.email | cut -d@ -f1)/$T-${SLUG:-fix}"
-git switch -f -C "$BRANCH" origin/master
+BRANCH=$($G existing --ticket $T --branch "$BRANCH" | jq -r .suggested)   # never an existing name
+git stash push -m "fix-$T-autostash-$RUN_ID" || true     # tracked changes only; untracked files are left alone
+git switch -c "$BRANCH" origin/master                      # no -f / -C: refuses to clobber anything
+$G snapshot --out $ART/baseline.json                       # what "this run's changes" are measured against
 ```
 
-Save `branch` to state. Mention the stash name to the user if one was created.
+`git switch` fails → tell the user (usually an untracked file in the way) and
+stop; never force it. Save `branch` to state. Mention the stash name to the
+user if one was created. `baseline.json` records HEAD and the files already
+untracked (e.g. `.serena/`, notes) so they never count as this run's work.
 
 ## Stage 1b — Logs (orchestrator, only if `has_logs`)
 
@@ -269,23 +293,31 @@ Save `branch` to state. Mention the stash name to the user if one was created.
 ## Stage 2 — RCA + red test (agent `fix-rca`)
 
 `stage_started rca {iteration}` → spawn `fix-rca` (with `LOGS_DIR`) → verify
-context → `repro_test {name, command, result: red}` from its `REPRO_TEST` block
-→ `stage_finished rca {iteration, confidence: <CONFIDENCE from rca.md>,
+context → checks below → `stage_finished rca {iteration, confidence: <CONFIDENCE from rca.md>,
 hint_check: <confirmed|partly|refuted|not_used from HINT_CHECK, omit if no hint>, context}`.
 
-Sanity-check before the gate (do not trust the agent's word):
-- **Comment check** (below) on the changed test files → any hit: re-prompt
+Checks before the gate — yours, not the agent's:
+- `$ART/rca.md` has `ROOT_CAUSE_ANALYSIS` and `REPRO_TEST`.
+- **Tree:** `$G check --baseline $ART/baseline.json --stage rca > $ART/check-rca.json`.
+  `HALT:UNRELATED_FILES` (a production file changed) → treat as `HALT`.
+  `STYLE` (ticket/PR refs in added comments, new files included) → re-prompt
   `fix-rca` once ("remove ticket/PR references from comments; keep comments to
   a non-obvious why, ≤2 lines"); still hits → show them at Gate 1 as ⚠.
-- `$ART/rca.md` has `ROOT_CAUSE_ANALYSIS`, `REPRO_TEST` with `RESULT: fail`.
-- `git status --porcelain` shows **only test files** (+ gazelle `BUILD.bazel`).
-  Any production file changed → treat as `HALT` `UNRELATED_FILES`.
+  `noise` (e.g. `MODULE.bazel.lock` rewritten by bazel) is shown, never a halt.
+- **Red, re-run by you:** `$G repro --rca $ART/rca.md --expect red --out $ART/repro-red.out`
+  (runs `REPRO_TEST.COMMAND` with `--nocache_test_results`; Bash timeout 600000).
+  `red` = bazel exit 3 **and** the `FAILURE` text is in the output. Anything
+  else (`red_unmatched`, `build_error`, `green`, `no_tests`, `bad_command`) →
+  re-prompt `fix-rca` once with the result and `repro-red.out` tail; still not
+  `red` → `HALT REPRO_FAILED`. Then `repro_test {name, command, result: red,
+  verified_by: orchestrator}`.
 
 ## GATE 1 — Approve root cause + failing test
 
 `gate_opened {gate: gate1}`. Show the user, in this order:
 1. `ROOT_CAUSE_ANALYSIS` block (verbatim), and `HINT_CHECK` if a hint was given.
-2. The repro test diff (`$ART/repro.diff`) and the failing output tail (`$ART/repro.out`).
+2. The repro test diff (`$ART/repro.diff`) and the failing output tail from
+   **your** run (`$ART/repro-red.out`, not the agent's `repro.out`).
 3. `RULED_OUT` alternatives.
 
 One AskUserQuestion call with two questions:
@@ -307,19 +339,21 @@ feedback}` (actor human).
 
 ## Stage 3 — Plan (agent `fix-planner`)
 
-`stage_started plan` → spawn `fix-planner` → verify context → `stage_finished plan`.
+`stage_started plan` → snapshot → spawn `fix-planner` → read-only check →
+verify context → `stage_finished plan`.
 If `BLAST_RADIUS.VERDICT` is `HALT:*` (out of scope / unrelated files) → treat
 as HALT (the plan is still shown so a human can take it over).
 `WARN:OVER_BUDGET` is **not** a halt — it goes to Gate 2.
 
-## GATE 2 — Approve plan (authorizes commit + push + draft PR)
+## GATE 2 — Approve plan (authorizes code edits + targeted tests only)
 
 `gate_opened {gate: gate2}`. Show `plan.md` (Summary, Files, Approach, Risks,
 Acceptance Criteria, BLAST_RADIUS, Tests to run). If the verdict is
 `WARN:OVER_BUDGET`, put it first: **"⚠ Over the size budget: <metrics> —
 <planner's why>. Approve only if this size is acceptable for a bugfix."**
 State plainly:
-**"Approving authorizes one commit series, a push of `<BRANCH>`, and a draft PR."**
+**"Approving lets the fix agent edit code on `<BRANCH>` and run the targeted
+tests. Nothing is committed or pushed until you approve the diff at Gate 3."**
 
 Same two questions as Gate 1 (Decision; **Plan quality** Good/OK/Poor), same
 handling (revise → re-run Stage 3 with feedback, max 2). Revise/Reject reasons:
@@ -327,40 +361,61 @@ handling (revise → re-run Stage 3 with feedback, max 2). Revise/Reject reasons
 (`wrong_approach|too_broad|missing_tests|risk_unaddressed|<other>`).
 `gate_decision {gate: gate2, decision, rating, reason, feedback}`. Reject → `run_finished {outcome: rejected_gate2}`.
 
-## Stage 4 — Fix (agent `fix-coder`)
+## Stage 4 — Fix (agent `fix-coder`), then GATE 3 — approve the diff
 
-`stage_started fix` → spawn `fix-coder` (`BRANCH`, `DRY_RUN`) → verify context.
-From `fix.md`: `tests_run {targets, passed, failed, attempts}` (`attempts` =
-red→green rounds, from `TEST_REPORT.ATTEMPTS`) and `repro_test {result: green}`.
-
-Independently confirm before accepting `FIX_DONE`:
-- **Matches the approved plan**: `git diff --numstat origin/master...HEAD` —
-  every non-test file is in plan.md *Files to Change*, and net non-test lines
-  ≤ max(2 × plan estimate, estimate + 20). Otherwise record `halted
-  {reason: PLAN_DRIFT}` and tell the user (the PR stays draft; offer
-  revise-plan via `resume` or take-over).
-  A `BUILD.bazel` hunk that adds a dependency counts as a non-test file (it
-  must be in *Files to Change*); pure gazelle reorders don't.
-- **Comment check** on the branch diff → any hit: `halted {reason: STYLE,
-  detail: <hits>}`; tell the user (PR stays draft; fix via a follow-up commit
-  with their OK).
-- `git log origin/master..HEAD --oneline` — commits start with `$T:`.
-- `gh pr view --json url,number,isDraft,additions,deletions,changedFiles,commits,headRefOid` → draft PR exists.
-
-`pr_opened {url, number, branch, files, added, deleted, commits: <len(commits)>, head_sha}`
-→ `stage_finished fix`. (`commits` is the baseline for counting human follow-up
-commits later.)
-DRY_RUN → print the agent's command block, `run_finished {outcome: dry_run}`; stop.
+1. `stage_started fix` → spawn `fix-coder` (`BRANCH`, `DRY_RUN`) → verify
+   context. The agent edits, runs the targeted tests, writes `fix.md`,
+   `$ART/commit-msg.txt` and `$ART/pr-body.md`, and stops with `FIX_READY` —
+   it never runs `git add/commit/push` or `gh pr`.
+2. From `fix.md`: `tests_run {targets, passed, failed, attempts}` (`attempts` =
+   red→green rounds, from `TEST_REPORT.ATTEMPTS`).
+3. **Checks — yours, before anything is committed:**
+   - `$G check --baseline $ART/baseline.json --stage fix --plan $ART/plan.md > $ART/check-fix.json`.
+     It measures the worktree against the branch point (new untracked files
+     included), so upstream master changes never count.
+     `HALT:PLAN_DRIFT` (unplanned non-test file, new `BUILD.bazel` dep not in
+     the plan, or non-test lines added+deleted > max(2 × estimate, estimate + 20))
+     · `HALT:OUT_OF_SCOPE` · `HALT:FIX_INCOMPLETE` (no changes) → treat as
+     `HALT`; nothing was committed or pushed. `STYLE` → re-prompt `fix-coder`
+     once with `RESUME: dirty` and the `comment_hits` as `GATE_FEEDBACK`, then
+     re-check; still `STYLE` → `HALT STYLE`.
+   - **Green, re-run by you:** `$G repro --rca $ART/rca.md --expect green --out $ART/repro-green.out`.
+     `green` = bazel exit 0 **and** proof the test ran (Go `--- PASS: <NAME>`,
+     pytest `N passed`); a filter that matches nothing gives `no_tests`, not
+     green. Not `green` → `HALT TESTS_FAILING` with the output tail.
+     `repro_test {name, command, result: green, verified_by: orchestrator}`.
+4. DRY_RUN → show the check summary and the `ship` command you would run;
+   `run_finished {outcome: dry_run}`; stop.
+5. **GATE 3.** `gate_opened {gate: gate3}`; state `gate3`. Show: the
+   `diffstat` from `check-fix.json` (plus `git diff` of the non-test files if
+   ≤150 lines, else offer it), `noise` files (left uncommitted), the commit
+   message, the PR title, and the green evidence. One AskUserQuestion:
+   **"Commit these files, push `<BRANCH>` and open a draft PR?"** —
+   *Commit, push and open draft PR* / *Stop (edits stay uncommitted on the
+   branch)*. Free text via "Other" = change request → `fix-coder` with
+   `RESUME: dirty` and that text as `GATE_FEEDBACK`, then back to step 3 (max 2).
+   `gate_decision {gate: gate3, decision: approve|revise|reject, fingerprint,
+   feedback}` (actor human). Stop → `run_finished {outcome: rejected_gate3}`; state `done`.
+6. **Ship** (approve only):
+   ```bash
+   $G ship --baseline $ART/baseline.json --ticket $T --branch $BRANCH --plan $ART/plan.md \
+     --fingerprint <fingerprint from check-fix.json> \
+     --message $ART/commit-msg.txt --body $ART/pr-body.md > $ART/ship.json
+   ```
+   It re-runs the fix check, refuses if the diff no longer matches the
+   approved fingerprint, stages exactly the changed files (never noise or
+   pre-existing untracked files), commits, pushes (never forced) and opens
+   the draft PR — or reuses the open PR for the branch. Exit 3 on a failed
+   commit (usually a pre-commit hook) → `fix-coder` with `RESUME: dirty` and
+   the hook output, then step 3 and Gate 3 again (new fingerprint). Exit 3 on
+   push / PR → show the error and stop; `resume` picks it up (`committed` /
+   `pushed_no_pr`).
+7. `pr_opened {url, number, branch, files, added, deleted, commits, head_sha}`
+   from `ship.json` `.pr` → `stage_finished fix`. (`commits` is the baseline
+   for counting human follow-up commits later.)
 
 If the user edits code by hand at any point during the run, append
 `manual_edit {files, note}` (actor human) before continuing.
-
-**Comment check** (deterministic; `agents/conventions/git.md` §Comments inside diffs):
-
-```bash
-git diff -U0 origin/master -- $(git diff --name-only origin/master) \
-  | grep -nE '^\+\s*(//|#).*\b(AVX-[0-9]+|PR ?#?[0-9]{4,})'
-```
 
 ## Stage 5 — Handoff
 
@@ -385,7 +440,7 @@ Next (optional):
 Then run **Learn** (`PHASE=run_end`).
 
 After this point, any further commit or push (e.g. review follow-ups) needs a
-fresh confirmation from the user — Gate 2 covered only the initial PR.
+fresh confirmation from the user — Gate 3 covered only the initial PR.
 
 ## Learn — feedback → lessons (agent `fix-lessons`)
 

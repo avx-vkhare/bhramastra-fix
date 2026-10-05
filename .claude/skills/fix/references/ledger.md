@@ -20,17 +20,17 @@ hand-editing the file.
 | `eligibility` | agent | intake | full `eligibility.py` output (`verdict`, `criteria`) |
 | `override` | human | intake | `criteria` overridden, `reason` |
 | `logs_downloaded` | agent | logs | `prefix`, `bundles`, `dir` |
-| `repro_test` | agent | rca·fix | `name`, `command`, `result` red/green |
-| `gate_opened` | agent | gate1·gate2 | `gate` |
-| `gate_decision` | human | gate1·gate2 | `gate`, `decision` approve/revise/reject, `feedback` |
+| `repro_test` | agent | rca·fix | `name`, `command`, `result` red/green, `verified_by: orchestrator` (re-run by `fix_guard.py repro`) |
+| `gate_opened` | agent | gate1·gate2·gate3 | `gate` |
+| `gate_decision` | human | gate1·gate2·gate3 | `gate`, `decision` approve/revise/reject, `feedback`; gate3 also `fingerprint` (the diff that was approved) |
 | `tests_run` | agent | fix | `targets[]`, `passed`, `failed[]` |
 | `manual_edit` | human | any | `files[]`, `note` (user changed code by hand — mid-run or as a PR follow-up) |
 | `human_feedback` | human | — | **written by `lessons.py teach`**: `text`, `stage` (optional) — your own feedback on a finished run (`/fix teach`) |
 | `halted` | agent | any | `reason` (HALT reason code), `detail` |
-| `pr_opened` | agent | fix | `url`, `number`, `branch`, `files`, `added`, `deleted` |
+| `pr_opened` | agent | fix | `url`, `number`, `branch`, `files`, `added`, `deleted` (from `fix_guard.py ship`) |
 | `pr_state` | agent | — | `gh pr view` snapshot (via `refresh-prs`) |
 | `run_started` extras | human | — | `cwd`, `hint` (user's free-text pointer, if given) |
-| `run_finished` | agent | — | `outcome`: pr_opened · ineligible · checked · rejected_gate1 · rejected_gate2 · halted · dry_run · aborted |
+| `run_finished` | agent | — | `outcome`: pr_opened · ineligible · checked · rejected_gate1 · rejected_gate2 · rejected_gate3 · halted · dry_run · aborted |
 | `usage` | agent | intake·rca·plan·fix·other·orchestrator | **written by `harvest` only**: `scope` agent/orchestrator, `agent_id`, `agent_type`, token fields (`input_tokens`, `cache_creation_input_tokens`, `cache_read_input_tokens`, `output_tokens`, `total_tokens`), `requests`, `models{}`, `efforts{}`, `tool_calls{}`, `tool_errors{}`, `duration_s`, `transcript` |
 | `skill_used` | agent | any | `skill`, `outcome` ok·failed·fallback·partial (reported) or ok·error (transcript), `detail`/`error`, `source` reported·transcript, `invoked_by` |
 | `ai_rating` | human | — | `rating` good·ok·poor, `note` — post-merge verdict via `/fix rate` |

@@ -9,8 +9,8 @@ ticket and goes through these steps:
 4. Plans the smallest fix.
 5. Writes the fix, runs the affected tests, and opens a **draft** PR.
 
-Two gates need your decision: one for the root cause plus the failing test,
-and one for the plan. Every run is recorded in a local ledger. The skill also
+Three gates need your decision: the root cause plus the failing test, the
+plan, and the final diff. Nothing is committed or pushed before the third. Every run is recorded in a local ledger. The skill also
 learns from your gate feedback, your own notes, and PR review comments, but
 only from lessons you approve.
 
@@ -42,8 +42,8 @@ copy above overwrites files with the same name.
 ## Use
 
 ```
-/fix check AVX-N                   # is it a candidate? (no side effects)
-/fix AVX-N [hint…]                 # full run; answer Gate 1 and Gate 2
+/fix check AVX-N                   # is it a candidate? (no branch or code changes; writes .bhramastra/AVX-N/ + ledger)
+/fix AVX-N [hint…]                 # full run; answer Gates 1, 2 and 3
 /fix resume AVX-N                  # continue an interrupted run
 /fix learn AVX-N                   # review comments came in → proposed lessons
 /fix teach AVX-N "<feedback>"      # your own lesson for that run
@@ -58,7 +58,7 @@ copy above overwrites files with the same name.
 | `.claude/skills/fix/SKILL.md` | the orchestrator: stages, gates, ledger, learning, resume |
 | `.claude/agents/fix-{intake,rca,planner,coder,lessons}.md` | the stage subagents, run one at a time on Opus |
 | `.claude/skills/fix/references/` | eligibility rules, guardrails, handoff formats, testing, ledger, lessons |
-| `.claude/skills/fix/scripts/` | the deterministic parts: `eligibility.py`, `context_docs.py`, `ledger.py`, `lessons.py`, `fix_probe.py` (Python stdlib only) |
+| `.claude/skills/fix/scripts/` | the deterministic parts: `eligibility.py`, `context_docs.py`, `ledger.py`, `lessons.py`, `fix_probe.py`, `fix_guard.py` (Python stdlib only) |
 | `lessons/seed-lessons.jsonl` | approved lessons from the pilot runs |
 | `docs/design-plan.md` | the original design plan (historical) |
 

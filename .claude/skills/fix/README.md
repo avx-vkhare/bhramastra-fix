@@ -4,12 +4,14 @@
 
 ```
 Jira → Intake → eligibility → branch (latest master) → logs → RCA + red unit test
-     → GATE 1 (you) → Plan → GATE 2 (you) → Fix + targeted tests → draft PR → you review/merge
+     → GATE 1 (you) → Plan → GATE 2 (you) → Fix + targeted tests → GATE 3 (you, the diff)
+     → commit · push · draft PR → you review/merge
      → your feedback → proposed lessons → you approve → injected into future runs
 ```
 
 - **Test-first**: no plan or code until a unit test reproduces the bug (red on master).
-- **Human-gated**: you approve the root cause and the plan; Gate 2 authorizes the commit/push/draft PR.
+- **Human-gated**: you approve the root cause, the plan, and then the actual diff — nothing is committed or pushed before Gate 3.
+- **Checked, not trusted**: red/green, plan drift and comment rules are re-checked by scripts, not taken from the agents.
 - **Sequential agents** on Opus / high effort, each with a fresh context; handoff via files.
 - **Everything is recorded** in a ledger (decisions, time, tokens, skills, PR outcome).
 - **Learns from you**: corrections become reviewed lessons for similar future bugs.
@@ -21,7 +23,7 @@ How to use it step by step: [WORKFLOW.md](WORKFLOW.md). Team deck:
 
 ```
 /fix check AVX-12345              # is it a good candidate?
-/fix AVX-12345                    # run it; answer Gate 1 and Gate 2
+/fix AVX-12345                    # run it; answer Gates 1, 2 and 3
 /fix AVX-12345 check bgp_translator.go peer matching   # same, with a hint on where to look
 /fix status --refresh             # later: pull PR state
 /fix learn AVX-12345              # review comments came in → lessons (repeatable)
@@ -38,13 +40,14 @@ How to use it step by step: [WORKFLOW.md](WORKFLOW.md). Team deck:
 | `~/.claude/agents/fix-intake.md` | reads Jira, extracts eligibility facts + candidate dirs |
 | `~/.claude/agents/fix-rca.md` | root cause + failing Go/Python unit test |
 | `~/.claude/agents/fix-planner.md` | minimal change within guardrails |
-| `~/.claude/agents/fix-coder.md` | implement, green, targeted tests, commit, push, draft PR |
+| `~/.claude/agents/fix-coder.md` | implement, green, targeted tests, commit message + PR body (never commits) |
 | `~/.claude/agents/fix-lessons.md` | turns human feedback into proposed lessons |
 | `references/` | handoff formats, guardrails, testing, eligibility rules, component map, ledger, lessons |
 | `scripts/eligibility.py` | deterministic eligibility verdict from `facts.json` |
 | `scripts/context_docs.py` | which repo docs each stage must read (+ verification) |
 | `scripts/ledger.py` | append-only run ledger, transcript harvest, report, analytics |
 | `scripts/fix_probe.py` | read-only branch/PR probe that tells `resume` where an interrupted stage left off |
+| `scripts/fix_guard.py` | orchestrator's own checks: tree snapshots, plan-drift/comment checks, repro re-runs, existing-branch guard, commit/push/PR after Gate 3 |
 | `scripts/lessons.py` | lesson store: feedback, propose, review, select, verify, stats |
 
 ---
@@ -131,15 +134,26 @@ Match learned routes against both primary and HA transit IPs.
 BLAST_RADIUS: FILES_NONTEST 1/5 · LINES_NONTEST ~12/150 · PACKAGES 1/2 · VERDICT PASS
 Tests to run: repro test + //go/aviatrix.com/conduit/v2/controller-conduit:controller-conduit_test
 
-Approving authorizes one commit series, a push of vkhare/AVX-12345-…, and a draft PR.
+Approving lets the fix agent edit code on vkhare/AVX-12345-… and run the targeted
+tests. Nothing is committed or pushed until you approve the diff at Gate 3.
 ? Decision:      [Approve]  Revise  Reject
 ? Plan quality:  [Good]  OK  Poor
 ```
 
-### 4. Fix → draft PR
+### 4. Fix → Gate 3 → draft PR
 
 ```
-TEST_REPORT: repro red → green · controller-conduit_test PASS (148) · ATTEMPTS 1
+TEST_REPORT: controller-conduit_test PASS (148) · ATTEMPTS 1
+check: PASS — 1 non-test file, 11 lines (limit 32), no unplanned files, no comment hits
+repro (re-run by /fix): green — --- PASS: TestLearnedRoutes_KeptAfterTransitHAFailover
+
+  controller-conduit/bgp_translator.go       +9 -2   (prod)
+  controller-conduit/bgp_translator_test.go  +41 -0  (test)
+  commit: AVX-12345: Match learned routes against primary and HA peer IPs
+
+? Commit these files, push vkhare/AVX-12345-… and open a draft PR?
+  [Commit, push and open draft PR]  Stop
+
 PR (draft): https://github.com/AviatrixDev/cloudn/pull/60123   Run: r-20260930-a1b2
 Repro: bazel test …controller-conduit_test --test_filter='^TestLearnedRoutes_KeptAfterTransitHAFailover$'
 Tokens: 1.9M (intake 0.2M, rca 1.1M, plan 0.2M, fix 0.4M)   Model/effort: opus/high

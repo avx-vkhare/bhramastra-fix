@@ -85,6 +85,12 @@ REPRO_TEST:
 A compile error, import error, missing fixture, or timeout is **not** a repro —
 fix the test until it fails on the assertion that encodes the bug.
 
+The orchestrator re-runs `COMMAND` (`fix_guard.py repro`, adding
+`--nocache_test_results --test_output=all`, and `-test.v` for Go): red =
+bazel exit 3 + `FAILURE` found in the output; green = exit 0 + `--- PASS: <NAME>`
+(Go) or `N passed` (pytest). `COMMAND` must be one plain `bazel test …` with
+no shell syntax; `FAILURE` may elide with `...` between verbatim fragments.
+
 ## PLAN (planner)
 
 ```
@@ -107,7 +113,7 @@ fix the test until it fails on the assertion that encodes the bug.
 BLAST_RADIUS:
   GATE: plan
   FILES_NONTEST: 2/5
-  LINES_NONTEST: ~30/150
+  LINES_NONTEST: ~30/150      (added + deleted non-test lines)
   NEW_FILES: 0/2
   PACKAGES: 1/2
   DENYLIST_HITS: none
@@ -132,8 +138,12 @@ TEST_REPORT:
     - <criterion> — <why> | none
 ```
 
-Followed by a `BLAST_RADIUS` block with `GATE: post-code` computed from the real
-`git diff --numstat origin/master...HEAD`.
+Followed by a `BLAST_RADIUS` block with `GATE: post-code` computed from
+`fix_guard.py check --stage fix` (worktree vs the branch point, new files included).
+
+The fix agent also writes `$ART/commit-msg.txt` (`<TICKET>: <summary ≤64>`,
+blank line, 2–4 lines of why) and `$ART/pr-body.md`; the orchestrator's
+`fix_guard.py ship` uses both after Gate 3.
 
 ## LESSONS_APPLIED (every stage that received LESSONS; right after CONTEXT_LOADED)
 

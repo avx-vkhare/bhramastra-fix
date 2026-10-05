@@ -28,7 +28,8 @@ TEST_MARKERS = ("_test.go", "/test_", "_test.py", "/tests/", "conftest.py")
 
 def git(*args: str) -> str:
     p = subprocess.run(["git", *args], capture_output=True, text=True)
-    return p.stdout.strip() if p.returncode == 0 else ""
+    # rstrip only: porcelain lines start with a meaningful space (" M path")
+    return p.stdout.rstrip("\n") if p.returncode == 0 else ""
 
 
 def is_test(path: str) -> bool:
@@ -49,7 +50,8 @@ def main() -> int:
     head = git("rev-parse", "HEAD")
     out: dict = {"ticket": args.ticket, "branch": args.branch, "current_branch": head_branch, "head": head}
 
-    modified = [line[3:] for line in git("status", "--porcelain", "--untracked-files=no").splitlines() if line]
+    modified = [line[3:].split(" -> ")[-1]
+                for line in git("status", "--porcelain", "--untracked-files=no").splitlines() if line]
     since = datetime.fromisoformat(args.since.replace("Z", "+00:00")).timestamp() if args.since else None
     untracked = []
     for f in git("ls-files", "--others", "--exclude-standard").splitlines():
