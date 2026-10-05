@@ -26,6 +26,7 @@ How to use it step by step: [WORKFLOW.md](WORKFLOW.md). Team deck:
 /fix AVX-12345                    # run it; answer Gates 1, 2 and 3
 /fix AVX-12345 check bgp_translator.go peer matching   # same, with a hint on where to look
 /fix status --refresh             # later: pull PR state
+/fix review-handle AVX-12345      # review comments came in → answer them (two gates, then push + replies)
 /fix learn AVX-12345              # review comments came in → lessons (repeatable)
 /fix teach AVX-12345 "tests should assert on routes, not log lines"   # your own lesson
 /fix rate AVX-12345 ok "reviewer asked for a helper"   # after merge
@@ -42,11 +43,13 @@ How to use it step by step: [WORKFLOW.md](WORKFLOW.md). Team deck:
 | `~/.claude/agents/fix-planner.md` | minimal change within guardrails |
 | `~/.claude/agents/fix-coder.md` | implement, green, targeted tests, commit message + PR body (never commits) |
 | `~/.claude/agents/fix-lessons.md` | turns human feedback into proposed lessons |
+| `~/.claude/agents/fix-responder.md` | `review-handle`: triages review comments, makes approved changes, drafts replies (never commits) |
 | `references/` | handoff formats, guardrails, testing, eligibility rules, component map, ledger, lessons |
 | `scripts/eligibility.py` | deterministic eligibility verdict from `facts.json` |
 | `scripts/context_docs.py` | which repo docs each stage must read (+ verification) |
 | `scripts/ledger.py` | append-only run ledger, transcript harvest, report, analytics |
 | `scripts/fix_probe.py` | read-only branch/PR probe that tells `resume` where an interrupted stage left off |
+| `scripts/fix_review.py` | `review-handle`: find the PR, sync its branch, fetch open review items, build the round plan, post replies |
 | `scripts/fix_guard.py` | orchestrator's own checks: tree snapshots, plan-drift/comment checks, repro re-runs, existing-branch guard, commit/push/PR after Gate 3 |
 | `scripts/lessons.py` | lesson store: feedback, propose, review, select, verify, stats |
 

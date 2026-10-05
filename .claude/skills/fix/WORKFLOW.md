@@ -122,7 +122,27 @@ PR** labelled `bhramastra` — exactly the diff you saw. The handoff prints the
 PR, the repro command, tokens, and next steps.
 
 From here it's a normal PR: `make test-branch` if you want the full blast
-radius, `/pr-review <N>`, `/pr-comments <N>`, mark ready, merge.
+radius, `/pr-review <N>`, mark ready, merge.
+
+## 5b. Review comments → `/fix review-handle AVX-N`
+
+When reviewers comment, run `/fix review-handle AVX-N` (`--dry-run` to stop
+before anything is published). Your tree must have no uncommitted edits to
+tracked files — it tells you which ones and stops; nothing is stashed. Then:
+
+1. It switches to the PR branch and fast-forwards it to GitHub (it stops if
+   the branch has local commits that were never pushed).
+2. The responder agent reads every open thread / review / PR comment and
+   proposes: *change* · *question* · *disagree* · *out of scope* · *already done*.
+3. **GATE R1** — per item: *Approve* / *Reply only* / *Skip*, or type your own wording.
+4. It makes only the approved changes, runs the targeted tests; `/fix` re-checks
+   the diff against the approved items and re-runs the repro test.
+5. **GATE R2** — you see the diff and every reply → *Commit, push and reply*.
+6. One commit `AVX-N: Address review comments (round k)`, a normal push, and
+   in-thread replies ("Fixed in `<sha>`: …"). Threads are left for the
+   reviewer to resolve. Then the comments are turned into proposed lessons.
+
+At most 3 rounds per PR; after that it's a conversation for humans.
 Any further commit/push `/fix` makes needs your fresh OK.
 
 ## 6. Teach it
@@ -175,6 +195,7 @@ no second PR is opened. `resume` also works after `TOOL_ERROR`,
 | `/fix check AVX-N [hint…]` | eligibility only |
 | `/fix AVX-N [--dry-run] [hint…]` | full pipeline |
 | `/fix resume AVX-N [hint…]` | continue a saved run (a new hint replaces the old one) |
+| `/fix review-handle AVX-N [--dry-run]` | answer review comments on the PR: triage → Gate R1 → fix → Gate R2 → push + replies |
 | `/fix status [AVX-N] [--refresh]` | ledger report; `--refresh` pulls PR state from GitHub |
 | `/fix learn AVX-N` | lessons from new PR review comments (repeatable) |
 | `/fix teach AVX-N <feedback…>` | lessons from your own feedback on that run |
@@ -192,3 +213,4 @@ no second PR is opened. `resume` also works after `TOOL_ERROR`,
 | Run ledger (every event, every run) | `~/.bhramastra/ledger.jsonl` |
 | Lessons | `~/.bhramastra/lessons.jsonl` |
 | Skill + agents | `~/.claude/skills/fix/`, `~/.claude/agents/fix-*.md` |
+| Review rounds (items, triage, approved, replies, posted) | `<cloudn>/.bhramastra/AVX-N/review-<k>/` |

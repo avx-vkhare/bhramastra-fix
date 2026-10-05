@@ -37,6 +37,7 @@ EVENTS = {
     "repro_test", "tests_run", "halted", "pr_opened", "pr_state",
     "manual_edit", "run_finished", "usage", "skill_used", "ai_rating",
     "lessons_injected", "lessons_distilled", "lesson_review", "human_feedback",
+    "review_round", "review_reply",
 }
 INTERVENTION_DECISIONS = {"revise", "reject"}
 TERMINAL_PR_STATES = {"MERGED", "CLOSED"}
@@ -45,7 +46,8 @@ SKILL_FAILED = {"error", "failed", "partial"}
 PR_URL_RE = re.compile(r"github\.com/([^/]+/[^/]+)/pull/(\d+)")
 
 PROJECTS = Path.home() / ".claude" / "projects"
-STAGE_BY_AGENT = {"fix-intake": "intake", "fix-rca": "rca", "fix-planner": "plan", "fix-coder": "fix"}
+STAGE_BY_AGENT = {"fix-intake": "intake", "fix-rca": "rca", "fix-planner": "plan", "fix-coder": "fix",
+                  "fix-responder": "review", "fix-lessons": "learn"}
 TOKEN_FIELDS = ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens", "output_tokens")
 AGENT_TOOLS = {"Agent", "Task"}
 
@@ -343,9 +345,12 @@ def summarize(run_id: str, evs: list[dict]) -> dict:
             time_to_merge = (parse_ts(st["mergedAt"]) - parse_ts(pr[-1]["ts"])).total_seconds()
     elif pr:
         pr_state = "DRAFT"
+    # commits /fix review-handle pushed are AI follow-ups, not human rework
+    rounds = by("review_round")
+    ai_review_commits = sum(1 for e in rounds if e["data"].get("commit"))
     post_pr_commits = ""
     if pr and st.get("commits") is not None and pr[-1]["data"].get("commits") is not None:
-        post_pr_commits = max(st["commits"] - pr[-1]["data"]["commits"], 0)
+        post_pr_commits = max(st["commits"] - pr[-1]["data"]["commits"] - ai_review_commits, 0)
 
     # tokens / model / effort (harvested); orchestrator keeps the last snapshot per session
     agent_usage = [e for e in by("usage") if e["data"].get("scope") == "agent"]
@@ -418,6 +423,8 @@ def summarize(run_id: str, evs: list[dict]) -> dict:
         "fix_attempts": tests[-1]["data"].get("attempts", "") if tests else "",
         "context_reprompts": reprompts,
         "post_pr_commits": post_pr_commits,
+        "review_rounds": sum(1 for e in rounds if e["data"].get("shipped")),
+        "review_replies": len(by("review_reply")),
         "review_comments": st.get("comments", ""),
         "review_decision": st.get("reviewDecision") or "",
         "ai_rating": rating[-1]["data"].get("rating", "") if rating else "",

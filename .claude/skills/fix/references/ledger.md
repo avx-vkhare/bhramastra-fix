@@ -36,6 +36,8 @@ hand-editing the file.
 | `ai_rating` | human | — | `rating` good·ok·poor, `note` — post-merge verdict via `/fix rate` |
 | `lessons_injected` | agent | intake·rca·plan·fix | `stage`, `ids` injected, `applied`, `not_applicable` (from `lessons.py verify`) |
 | `lessons_distilled` | agent | — | **written by `lessons.py propose`**: `phase` run_end·review·post_merge·manual, `proposed`, `reinforced`, `errors`, `consumed` (signal ids distilled: `rc-`/`rv-`/`ic-` review comments, `cm-` follow-up commits, `hf-` feedback, `me-` hand edits, `gd-` gate decisions, `ov-` overrides, `sf-` skill failures, `ar-` ratings) |
+| `review_round` | agent | — | `/fix review-handle`: `round`, `stage` started·dry_run·shipped, `items`, `head_before`, `shipped`, `commit`, `replies` (on the run that opened the PR) |
+| `review_reply` | agent | — | `round`, `id` (th-/rv-/ic- item), `kind`, `url` of the posted reply |
 | `lesson_review` | human | — | **written by `lessons.py review-set`**: `id`, `decision` approve·reject·retire, `edited` |
 
 Extra fields on existing events, used for AI-performance analytics:
@@ -47,6 +49,7 @@ Extra fields on existing events, used for AI-performance analytics:
 - `tests_run`: `attempts` (red→green rounds).
 - `pr_opened`: `commits`, `head_sha` — baseline for human follow-up commits.
 - `pr_state`: also `commits`, `additions`, `deletions`.
+- `gate_opened` / `gate_decision` also use `review_r1` (what to do per review item) and `review_r2` (publish: commit, push, replies).
 
 ## Where the numbers come from
 
@@ -74,7 +77,8 @@ rework ratio (audit-ai `metrics-<T>.json` if present).
 
 AI performance columns: `rca_confidence`, `hint`, `hint_check`, `gate1_first_pass`, `gate2_first_pass`,
 `gate1_rating`, `gate2_rating`, `revise_reasons`, `rca_iterations`,
-`plan_iterations`, `fix_attempts`, `context_reprompts`, `post_pr_commits`,
+`plan_iterations`, `fix_attempts`, `context_reprompts`, `post_pr_commits` (human
+follow-ups only; `review-handle` commits are excluded), `review_rounds`, `review_replies`,
 `review_comments`, `review_decision`, `ai_rating`, `ai_rating_note`,
 `autonomous_merge` (merged, 0 interventions, 0 follow-up commits).
 Cost / compliance columns: `tokens_total`, `tokens_output`, `tokens_cache_read`,

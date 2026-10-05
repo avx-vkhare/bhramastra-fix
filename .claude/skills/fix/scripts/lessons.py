@@ -44,6 +44,8 @@ MIN_TEXT = 20
 PHASES = ("run_end", "review", "post_merge", "manual")
 PR_PHASES = {"review", "post_merge"}
 RUN_END_ID_PREFIXES = ("gd-", "ov-", "sf-")
+BOT_PREFIXES = ("app/", "github-actions", "copilot", "codecov", "dependabot", "renovate")
+REPLY_MARKER = "<!-- bhramastra-reply -->"   # /fix review-handle replies; not reviewer feedback
 APPLIED_RE = re.compile(r"LESSONS_APPLIED:\s*\n((?:[ \t]*[-*].*\n?)+)")
 
 
@@ -106,7 +108,9 @@ def gh_json(args: list[str], many: bool = False):
 
 
 def is_bot(login: str | None) -> bool:
-    return not login or login.endswith("[bot]") or login.lower() in {"github-actions", "copilot"}
+    login = (login or "").lower()
+    # gh shows app accounts without "[bot]" (e.g. codecov-for-aviatrix), hence prefixes
+    return not login or login.endswith("[bot]") or login.startswith(BOT_PREFIXES)
 
 
 def pr_feedback(pr: dict, consumed: set[str]) -> dict:
@@ -124,16 +128,19 @@ def pr_feedback(pr: dict, consumed: set[str]) -> dict:
                       ".[] | {id: (\"rc-\" + (.id|tostring)), user: .user.login, path, line: (.line // .original_line), "
                       "in_reply_to: .in_reply_to_id, body, url: .html_url, "
                       "diff_hunk: (.diff_hunk | split(\"\\n\") | .[-6:] | join(\"\\n\"))}"], many=True) or []
-    out["inline_comments"] = [c for c in inline if not is_bot(c.get("user")) and c["id"] not in consumed]
+    out["inline_comments"] = [c for c in inline if not is_bot(c.get("user")) and c["id"] not in consumed
+                              and REPLY_MARKER not in (c.get("body") or "")]
     view = gh_json(["pr", "view", number, "--repo", repo, "--json", "reviews,comments,commits"]) or {}
     out["reviews"] = [{"id": f"rv-{r.get('id')}", "user": (r.get("author") or {}).get("login"),
                        "state": r.get("state"), "body": r.get("body")}
                       for r in view.get("reviews") or []
                       if r.get("body") and not is_bot((r.get("author") or {}).get("login"))
+                      and REPLY_MARKER not in r["body"]
                       and f"rv-{r.get('id')}" not in consumed]
     out["comments"] = [{"id": f"ic-{c.get('id')}", "user": (c.get("author") or {}).get("login"), "body": c.get("body")}
                        for c in view.get("comments") or []
-                       if not is_bot((c.get("author") or {}).get("login")) and f"ic-{c.get('id')}" not in consumed]
+                       if not is_bot((c.get("author") or {}).get("login")) and f"ic-{c.get('id')}" not in consumed
+                       and REPLY_MARKER not in (c.get("body") or "")]
     commits = view.get("commits") or []
     base = pr.get("commits")
     follow = commits[base:] if isinstance(base, int) else []
@@ -156,6 +163,8 @@ def cmd_feedback(args) -> int:
     distilled_evs = [e for e in evs if e["event"] == "lessons_distilled"]
     distilled = [e["data"] for e in distilled_evs]
     consumed = {i for d in distilled for i in d.get("consumed") or []}
+    # commits pushed by /fix review-handle are the AI's own, not human follow-ups
+    consumed |= {f"cm-{e['data']['commit']}" for e in evs if e["event"] == "review_round" and e["data"].get("commit")}
     # Distillations written before run_end signals had ids consumed them by time only.
     legacy_cut = max((e["ts"] for e in distilled_evs if (e["data"] or {}).get("phase") == "run_end"
                       and not any(i.startswith(RUN_END_ID_PREFIXES) for i in e["data"].get("consumed") or [])),

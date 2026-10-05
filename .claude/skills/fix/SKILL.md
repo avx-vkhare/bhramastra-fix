@@ -1,7 +1,7 @@
 ---
 name: fix
 description: BhramASTRA — gated Jira bug-fix pipeline for cloudn. Intake (eligibility) → RCA with a failing unit test → Gate 1 → plan → Gate 2 → fix + targeted tests → draft PR. Sequential stage agents, human decision at every gate, every run recorded in a ledger, human feedback distilled into reviewed lessons that are injected into future runs.
-argument-hint: <AVX-####> [--dry-run] [hint…] | check <AVX-####> [hint…] | resume <AVX-####> | status [AVX-####] [--refresh] | rate <AVX-####> <good|ok|poor> [note] | learn <AVX-####> | teach [AVX-####] <feedback…> | lessons [review|list|gaps|stats] | analytics | help
+argument-hint: <AVX-####> [--dry-run] [hint…] | check <AVX-####> [hint…] | resume <AVX-####> | review-handle <AVX-####> [--dry-run] | status [AVX-####] [--refresh] | rate <AVX-####> <good|ok|poor> [note] | learn <AVX-####> | teach [AVX-####] <feedback…> | lessons [review|list|gaps|stats] | analytics | help
 allowed-tools: Bash, Read, Write, Edit, Glob, Grep, Agent, Skill, AskUserQuestion, mcp__jira__jira_issues, mcp__jira__jira_attachments
 model: opus
 effort: high
@@ -39,6 +39,7 @@ through `scripts/fix_guard.py`; an agent's own report is context, not evidence.
 | `teach <feedback…>` (no ticket) | Write a lesson directly: draft WHEN / DO / stage / scope from the text, confirm with one AskUserQuestion (*Save* / *Reword* / *Cancel*), then `$LS add --stage S --trigger .. --lesson .. [--component C].. [--path P].. --note "<verbatim text>"` (approved on entry); stop |
 | `lessons [review]` | Review all `proposed` lessons (Learn step 3); stop |
 | `lessons list \| gaps \| stats` | `$LS list --status approved` · `$LS list --kind doc_gap --status approved` · `$LS stats`; print; stop |
+| `review-handle AVX-<n> [--dry-run]` | Answer open review comments on the PR `/fix` opened: **Review-handle** below. `--dry-run` stops before Gate R2 |
 | `analytics` | `ledger.py analytics`; present funnel, first-pass rates, reasons, tokens, skill failures; stop |
 
 **HINT** = every word after the ticket key other than `--dry-run`, verbatim
@@ -218,7 +219,7 @@ runs with no override.
    local branch, remote branch or open PR for `$T` already exists (e.g. a run
    that reached `done`). Show them and AskUserQuestion: *Start on a new branch*
    (Stage 1a takes the `suggested` name) / *Stop* (review follow-ups on an
-   existing PR go through `/pr-comments`, not a new run). Never reset or reuse
+   existing PR go through `/fix review-handle`, not a new run). Never reset or reuse
    an existing branch for a fresh run.
 6. Fresh: `RUN_ID=$($L start --ticket $T [--hint "$HINT"])`; write state (include `hint`).
    Resume: keep `run_id` from state (no new `start`); read `hint` from state; a
@@ -430,7 +431,7 @@ Skills: <skills>   Failed: <skills_failed or none>
 Next (optional):
   make test-branch        — full blast-radius tests for the branch (not run by /fix)
   /pr-review <N>          — AI review posting inline comments
-  /pr-comments <N>        — address review threads (each push needs your OK)
+  /fix review-handle <T>  — answer review comments: triage → your OK → fix → your OK → push + replies
   /fix status --refresh   — record PR state changes in the ledger
   /fix learn <T>          — after review comments arrive: turn them into lessons (repeatable)
   /fix teach <T> "<feedback>"  — your own lesson for this run, any time
@@ -441,6 +442,86 @@ Then run **Learn** (`PHASE=run_end`).
 
 After this point, any further commit or push (e.g. review follow-ups) needs a
 fresh confirmation from the user — Gate 3 covered only the initial PR.
+`/fix review-handle` asks for it at Gate R2 of every round.
+
+## Review-handle — answer PR review comments (agent `fix-responder`)
+
+`/fix review-handle <T> [--dry-run]`. One **round** = everything open on the PR
+right now. Max 3 shipped rounds per PR; after that tell the user it needs a
+human conversation and stop. `R="python3 $SK/scripts/fix_review.py"`.
+
+1. **Locate.** `$R locate --ticket $T > $ART/review-locate.json` — the PR `/fix`
+   opened (from the ledger), its branch and `RUN_ID`. Exit 1 (no PR, or not
+   OPEN) → tell the user; stop. Reuse that `RUN_ID`: every event of the round
+   goes to the run that opened the PR. `k = rounds_shipped + 1`; `RD=$ART/review-<k>`;
+   `mkdir -p $RD`. `rounds_shipped ≥ 3` → stop as above.
+2. **Sync the branch.** `$R sync --branch $BRANCH`. It needs a clean tree:
+   tracked edits → exit 1 with the files → tell the user "commit or stash
+   these first" and stop (no auto-stash; untracked files are fine).
+   `MODULE.bazel.lock` alone is reverted (your rule, lesson on bazel noise).
+   It switches to the PR branch (no `-f`) and fast-forwards to `origin`; a
+   diverged branch (unpushed local commits) → exit 1 → show ahead/behind; stop.
+   Merge conflicts with master are not handled — GitHub keeps showing them.
+   Then `$G snapshot --out $RD/baseline.json`.
+3. **Items.** `$R items --ticket $T --out $RD/items.json`: unresolved,
+   non-outdated review threads, review bodies and PR comments — bots, our own
+   replies, and items answered in an earlier round (unless the reviewer wrote
+   again) are dropped. `items: 0` → "nothing to answer"; stop.
+   `review_round {round: k, stage: started, items: <n>, head_before}`.
+4. **Triage.** Required docs: `$CTX --stage fix --path <each thread path>`;
+   lessons: `$LS select --stage fix <same --path args>`. Spawn `fix-responder`
+   with `MODE=triage`, `ROUND=k`, `RD` → verify context/lessons on
+   `$RD/triage.md` → `$L harvest` → read-only check (`$G check --baseline
+   $RD/baseline.json --stage readonly` must pass).
+5. **GATE R1 — what to do per item.** `gate_opened {gate: review_r1}`. Show a
+   table: id · where · reviewer's words (first 2 lines) · kind · proposal or
+   draft reply. AskUserQuestion, one question per item (4 per call):
+   *Approve* / *Reply only, no code change* / *Skip this round*; free text via
+   "Other" = your wording for the change or the reply. Write `$RD/approved.json`
+   (the triage entries with `decision: approve`, your edits applied; *Reply
+   only* sets `kind: question`). `gate_decision {gate: review_r1, approved,
+   skipped, edited}` (actor human). Nothing approved → stop.
+6. **Plan.** `$R plan --approved $RD/approved.json --out $RD/review-plan.md`
+   — the files of the approved changes and their line estimate; this is what
+   the diff is held to.
+7. **Implement** (only if any approved item is `kind: change`). Required docs
+   / lessons as in step 4 plus `--path` for each planned file. Spawn
+   `fix-responder` with `MODE=implement` → verify context/lessons on
+   `$RD/respond.md` → `$L harvest` → `tests_run` from its `TEST_REPORT`. Then
+   your checks, as in Stage 4 step 3:
+   `$G check --baseline $RD/baseline.json --stage fix --plan $RD/review-plan.md > $RD/check.json`
+   (`HALT:*` → treat as HALT; `STYLE` → one re-prompt, then `HALT STYLE`) and
+   `$G repro --rca $ART/rca.md --expect green --out $RD/repro-green.out`
+   (not `green` → `HALT TESTS_FAILING`). No approved changes → the agent only
+   writes `replies.json`; skip the checks.
+8. `--dry-run` → show the diff stat and every reply; `review_round {round: k,
+   stage: dry_run}`; stop.
+9. **GATE R2 — publish.** `gate_opened {gate: review_r2}`. Show the
+   `diffstat` from `check.json` (and the non-test diff if ≤150 lines), the
+   commit message, and every reply as it will be posted. One question:
+   **"Commit, push `<BRANCH>` and post <n> replies?"** — *Commit, push and
+   reply* / *Stop (edits stay uncommitted)*; free text = change request →
+   implement again with it as `GATE_FEEDBACK` (max 2), back to step 7.
+   Replies only (no code change): *Post <n> replies* / *Stop*.
+   `gate_decision {gate: review_r2, decision, fingerprint, feedback}`.
+10. **Ship + reply.**
+    ```bash
+    $G ship --baseline $RD/baseline.json --ticket $T --branch $BRANCH --plan $RD/review-plan.md \
+      --fingerprint <from check.json> --message $RD/commit-msg.txt --body $ART/pr-body.md > $RD/ship.json
+    $R reply --ticket $T --items $RD/items.json --replies $RD/replies.json \
+      --sha <ship.json .committed> --posted $RD/posted.json
+    ```
+    (skip `ship` when there are no code changes; replies then must not use
+    `{sha}`). `ship` reuses the open PR — it never opens a second one. A push
+    failure (e.g. the pre-push hook) → show it and stop; nothing is replied
+    yet, and re-running step 10 resumes (`reply` skips what's in `posted.json`).
+    For each posted reply `review_reply {round: k, id, kind, url}`; then
+    `review_round {round: k, stage: shipped, shipped: true, commit, replies: <n>}`.
+    Threads are never resolved by `/fix` — the reviewer does that.
+11. `$L harvest`; then **Learn** with `PHASE=review` (the reviewer's comments
+    from this round; our replies and commits are excluded automatically).
+    Tell the user they are now on `<BRANCH>` (switched from `switched_from`
+    in the sync output, if any).
 
 ## Learn — feedback → lessons (agent `fix-lessons`)
 

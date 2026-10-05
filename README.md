@@ -45,6 +45,7 @@ copy above overwrites files with the same name.
 /fix check AVX-N                   # is it a candidate? (no branch or code changes; writes .bhramastra/AVX-N/ + ledger)
 /fix AVX-N [hint…]                 # full run; answer Gates 1, 2 and 3
 /fix resume AVX-N                  # continue an interrupted run
+/fix review-handle AVX-N           # answer review comments (Gate R1 + R2, then push + replies)
 /fix learn AVX-N                   # review comments came in → proposed lessons
 /fix teach AVX-N "<feedback>"      # your own lesson for that run
 /fix rate AVX-N good|ok|poor "…"   # after merge
@@ -56,9 +57,9 @@ copy above overwrites files with the same name.
 | Path | What |
 |---|---|
 | `.claude/skills/fix/SKILL.md` | the orchestrator: stages, gates, ledger, learning, resume |
-| `.claude/agents/fix-{intake,rca,planner,coder,lessons}.md` | the stage subagents, run one at a time on Opus |
+| `.claude/agents/fix-{intake,rca,planner,coder,responder,lessons}.md` | the stage subagents, run one at a time on Opus |
 | `.claude/skills/fix/references/` | eligibility rules, guardrails, handoff formats, testing, ledger, lessons |
-| `.claude/skills/fix/scripts/` | the deterministic parts: `eligibility.py`, `context_docs.py`, `ledger.py`, `lessons.py`, `fix_probe.py`, `fix_guard.py` (Python stdlib only) |
+| `.claude/skills/fix/scripts/` | the deterministic parts: `eligibility.py`, `context_docs.py`, `ledger.py`, `lessons.py`, `fix_probe.py`, `fix_guard.py`, `fix_review.py` (Python stdlib only) |
 | `lessons/seed-lessons.jsonl` | approved lessons from the pilot runs |
 | `docs/design-plan.md` | the original design plan (historical) |
 
