@@ -159,7 +159,6 @@ def pr_feedback(pr: dict, consumed: set[str]) -> dict:
 def cmd_feedback(args) -> int:
     evs = run_events(args.run_id)
     ticket = evs[0]["ticket"]
-    cwd = (evs[0]["data"] or {}).get("cwd") or str(Path.cwd())
     distilled_evs = [e for e in evs if e["event"] == "lessons_distilled"]
     distilled = [e["data"] for e in distilled_evs]
     consumed = {i for d in distilled for i in d.get("consumed") or []}
@@ -202,7 +201,7 @@ def cmd_feedback(args) -> int:
         "run_id": args.run_id,
         "ticket": ticket,
         "phase": args.phase,
-        "art": str(Path(cwd) / ".bhramastra" / ticket),
+        "art": str(ledger.art_dir(ticket)),
         "eligibility": next((e["data"] for e in reversed(evs) if e["event"] == "eligibility"), {}),
         "hint": (evs[0]["data"] or {}).get("hint", ""),
         "hint_check": next((e["data"].get("hint_check") for e in reversed(evs)

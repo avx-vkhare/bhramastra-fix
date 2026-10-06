@@ -1,6 +1,6 @@
 # Handoff formats
 
-Every stage agent writes its artifact to `.bhramastra/<T>/<stage>.md` and ends
+Every stage agent writes its artifact to `$ART/<stage>.md` (`~/.bhramastra/runs/<T>/`) and ends
 its reply with the block(s) below. The orchestrator reads the file, not the
 reply. Field names are fixed; values are free text unless an enum is given.
 

@@ -37,7 +37,7 @@ but never blocks. No repro and no logs → **NEEDS_OVERRIDE**: you can continue
 if you describe how to reproduce it or where to look (that text becomes the hint).
 
 Not sure? Dry-run the eligibility check — no branch, no logs, no code
-changes (it only writes `.bhramastra/AVX-N/` and a ledger entry):
+changes (it only writes `~/.bhramastra/runs/AVX-N/` and a ledger entry):
 
 ```
 /fix check AVX-N
@@ -68,7 +68,7 @@ hinted runs pass Gate 1 more often.
    commit or park your work before starting. Untracked files are left alone
    and never count as the run's changes.
 3. **Logs** — download tracelog bundles / Jira attachments into
-   `.bhramastra/AVX-N/logs/`. If AWS auth fails it shows the SSO URL + code
+   `~/.bhramastra/runs/AVX-N/logs/`. If AWS auth fails it shows the SSO URL + code
    and **waits for you**. It never silently continues without logs.
 4. **RCA + red test** — the agent finds the root cause and writes **one unit
    test** (Go or Python, where the bug starts) that fails on master for that reason.
@@ -209,8 +209,8 @@ no second PR is opened. `resume` also works after `TOOL_ERROR`,
 
 | What | Where |
 |---|---|
-| Per-ticket artifacts (intake, rca, plan, fix, logs, state) | `<cloudn>/.bhramastra/AVX-N/` (git-excluded, kept) |
+| Per-ticket artifacts (intake, rca, plan, fix, logs, state) | `~/.bhramastra/runs/AVX-N/` (outside the repo, kept) |
 | Run ledger (every event, every run) | `~/.bhramastra/ledger.jsonl` |
 | Lessons | `~/.bhramastra/lessons.jsonl` |
 | Skill + agents | `~/.claude/skills/fix/`, `~/.claude/agents/fix-*.md` |
-| Review rounds (items, triage, approved, replies, posted) | `<cloudn>/.bhramastra/AVX-N/review-<k>/` |
+| Review rounds (items, triage, approved, replies, posted) | `~/.bhramastra/runs/AVX-N/review-<k>/` |

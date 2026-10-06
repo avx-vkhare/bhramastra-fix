@@ -30,8 +30,8 @@ through `scripts/fix_guard.py`; an agent's own report is context, not evidence.
 |---|---|
 | empty / `help` | Print this table and the flow diagram; stop |
 | `AVX-<n> [--dry-run] [hint…]` | Full pipeline. `--dry-run` stops before Gate 3 (nothing committed or pushed) |
-| `check AVX-<n> [hint…]` | Stages 0–1 only (eligibility dry run); no branch, no logs, no repo changes (writes only `.bhramastra/<T>/` and the ledger) |
-| `resume AVX-<n> [hint…]` | Continue from `.bhramastra/<T>/state.json` |
+| `check AVX-<n> [hint…]` | Stages 0–1 only (eligibility dry run); no branch, no logs, no repo changes (writes only `~/.bhramastra/runs/<T>/` and the ledger) |
+| `resume AVX-<n> [hint…]` | Continue from `~/.bhramastra/runs/<T>/state.json` |
 | `status [AVX-<n>] [--refresh]` | `--refresh` → `ledger.py refresh-prs`; then `ledger.py report [--ticket T]`; print as a table; stop |
 | `rate AVX-<n> <good\|ok\|poor> [note]` | `ledger.py rate --ticket T --rating R --note "<note>"` — your verdict on how the AI did (best after merge/close); then **Learn** with `PHASE=post_merge`; stop |
 | `learn AVX-<n>` | Learn from the PR's **review comments** now (any time, repeatable; only new comments): `$L refresh-prs --ticket T`, then **Learn** with `PHASE=review`; stop |
@@ -59,7 +59,7 @@ L="python3 $SK/scripts/ledger.py"
 CTX="python3 $SK/scripts/context_docs.py --repo-root $REPO"
 LS="python3 $SK/scripts/lessons.py --repo-root $REPO"
 G="python3 $SK/scripts/fix_guard.py"              # snapshots, change checks, repro re-runs, ship
-ART=$REPO/.bhramastra/$T                          # per-ticket artifacts (persist; never deleted)
+ART=${BHRAMASTRA_RUNS:-$HOME/.bhramastra/runs}/$T  # per-ticket artifacts, outside the repo (persist; never deleted)
 ```
 
 - **Shell state does not persist between Bash calls.** Re-derive `REPO/SK/L/CTX/ART`
@@ -208,8 +208,10 @@ runs with no override.
    `command -v bazel jq python3`. Any failure → tell the user, stop.
    `$CTX --check-map` → on exit 1, warn the user that `references/component-map.md`
    has drifted from `agents/feature-map.md` (list the problems) and continue.
-3. `mkdir -p $ART`; ensure `.bhramastra/` is in `$REPO/.git/info/exclude`
-   (append if missing — `.gitignore` is tracked, don't edit it).
+3. `mkdir -p $ART`. It lives outside the cloudn checkout (with the ledger and
+   lessons under `~/.bhramastra/`), so nothing is written into the repo. If
+   Claude Code prompts for access to it, `~/.bhramastra` is missing from
+   `permissions.additionalDirectories` — re-run the bhramastra-fix `install.sh`.
 4. If `$ART/state.json` exists and `stage` ∉ {done, halted} — or `stage` is
    `halted` with `halt_reason` ∈ {TOOL_ERROR, CONTEXT_MISSING, PLAN_DRIFT, STYLE} — ask (AskUserQuestion)
    *Resume from `<stage>`* / *Start fresh*. Resume → follow **Interrupted agents

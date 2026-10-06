@@ -18,6 +18,7 @@ stage out of `untracked` — the repo root often has unrelated untracked files.
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 from datetime import datetime
@@ -83,7 +84,7 @@ def main() -> int:
             pr = None if pr.get("state") == "CLOSED" else pr
     out["pr"] = pr
 
-    art = root / ".bhramastra" / args.ticket
+    art = Path(os.environ.get("BHRAMASTRA_RUNS", Path.home() / ".bhramastra" / "runs")) / args.ticket
     out["artifact"] = {"rca.md": (art / "rca.md").exists(), "fix.md": (art / "fix.md").exists()}
 
     dirty = bool(modified or untracked)

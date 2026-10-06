@@ -96,7 +96,7 @@ VERDICT: ELIGIBLE
 > /fix AVX-12345 suspect controller-side filtering of learned routes
   hint    → go/aviatrix.com/conduit/v2/controller-conduit (bgp_translator.go)
   branch  vkhare/AVX-12345-spoke-loses-bgp-learned-routes   (from origin/master)
-  logs    3 bundles → .bhramastra/AVX-12345/logs/
+  logs    3 bundles → ~/.bhramastra/runs/AVX-12345/logs/
   lessons injected for rca: L-0004
 
 ROOT_CAUSE_ANALYSIS:

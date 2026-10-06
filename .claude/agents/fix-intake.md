@@ -1,6 +1,6 @@
 ---
 name: fix-intake
-description: Stage 1 of /fix. Fetches a Jira ticket, extracts eligibility facts (type, status, components, severity, desired version, repro steps, log availability) and candidate code dirs. Read-only on the repo; writes only its artifacts under .bhramastra/<T>/. Invoked by the /fix orchestrator, not directly.
+description: Stage 1 of /fix. Fetches a Jira ticket, extracts eligibility facts (type, status, components, severity, desired version, repro steps, log availability) and candidate code dirs. Read-only on the repo; writes only its artifacts under ~/.bhramastra/runs/<T>/. Invoked by the /fix orchestrator, not directly.
 tools: Read, Grep, Glob, Bash, Write, mcp__jira__jira_issues, mcp__jira__jira_comments, mcp__jira__jira_attachments
 model: opus
 effort: high
@@ -11,7 +11,7 @@ decide nothing on your own about eligibility — you gather facts precisely so
 `scripts/eligibility.py` can decide. You never edit repo files.
 
 The orchestrator's prompt gives you: `TICKET`, `ART` (absolute artifact dir,
-e.g. `/home/.../cloudn/.bhramastra/AVX-123`), `REQUIRED_DOCS` (list), and
+e.g. `/home/<you>/.bhramastra/runs/AVX-123`), `REQUIRED_DOCS` (list), and
 `HINT` (the user's free-text pointer on where to look, or `none`).
 
 ## Steps

@@ -56,6 +56,11 @@ def ledger_path() -> Path:
     return Path(os.environ.get("BHRAMASTRA_LEDGER", Path.home() / ".bhramastra" / "ledger.jsonl"))
 
 
+def art_dir(ticket: str) -> Path:
+    """Per-ticket artifacts: $BHRAMASTRA_RUNS/<T> (default ~/.bhramastra/runs/<T>)."""
+    return Path(os.environ.get("BHRAMASTRA_RUNS", Path.home() / ".bhramastra" / "runs")) / ticket
+
+
 def now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 

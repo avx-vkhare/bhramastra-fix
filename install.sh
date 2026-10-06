@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Link this clone into Claude Code (user level) so `git pull` updates /fix in place.
 #
-#   ./install.sh              link skill + agents, create ~/.bhramastra, seed lessons, check tools
+#   ./install.sh              link skill + agents, create ~/.bhramastra (ledger, lessons, runs/),
+#                             allow it in ~/.claude/settings.json, seed lessons, check tools
 #   ./install.sh --check      only report what is linked and which tools are missing
 #   ./install.sh --uninstall  remove the links (your ledger and lessons are kept)
 #
@@ -56,7 +57,7 @@ unlink_all() {
 }
 
 seed_state() {
-  mkdir -p "$STATE"
+  mkdir -p "$STATE/runs"
   if [ -f "$STATE/lessons.jsonl" ]; then
     ok "kept your lessons: $STATE/lessons.jsonl (seed not copied over it)"
   else
@@ -65,12 +66,45 @@ seed_state() {
   fi
 }
 
+SETTINGS="$CLAUDE/settings.json"
+
+allow_state_dir() {   # let agents read/write ~/.bhramastra (run folders) without permission prompts
+  python3 - "$SETTINGS" "$STATE" <<'PY'
+import json, shutil, sys, time
+from pathlib import Path
+path, state = Path(sys.argv[1]), sys.argv[2]
+try:
+    cfg = json.loads(path.read_text()) if path.exists() else {}
+except json.JSONDecodeError as e:
+    print(f"  ✗ {path} is not plain JSON ({e}); add {state} to permissions.additionalDirectories by hand")
+    sys.exit(0)
+dirs = cfg.setdefault("permissions", {}).setdefault("additionalDirectories", [])
+if state in dirs:
+    print(f"  ✓ {state} already in permissions.additionalDirectories")
+    sys.exit(0)
+if path.exists():
+    bak = path.with_name(f"settings.json.bak-{time.strftime('%Y%m%d-%H%M%S')}")
+    shutil.copy2(path, bak)
+    print(f"  ✓ backed up {path} → {bak}")
+dirs.append(state)
+path.parent.mkdir(parents=True, exist_ok=True)
+path.write_text(json.dumps(cfg, indent=2) + "\n")
+print(f"  ✓ added {state} to permissions.additionalDirectories in {path}")
+PY
+}
+
+state_dir_allowed() {
+  python3 -c 'import json,sys; c=json.load(open(sys.argv[1])); sys.exit(sys.argv[2] not in c.get("permissions",{}).get("additionalDirectories",[]))' \
+    "$SETTINGS" "$STATE" 2>/dev/null
+}
+
 check_links() {
   local missing=0
   for pair in "${links[@]}"; do
     src="${pair%%|*}"; dst="${pair##*|}"
     if [ -L "$dst" ] && [ "$(readlink "$dst")" = "$src" ]; then ok "$dst"; else bad "$dst not linked"; missing=1; fi
   done
+  if state_dir_allowed; then ok "$STATE allowed in $SETTINGS"; else bad "$STATE not in permissions.additionalDirectories"; missing=1; fi
   return $missing
 }
 
@@ -99,8 +133,9 @@ case "$MODE" in
   install|"")
     echo "Linking /fix from $REPO into $CLAUDE"
     link_all
-    echo "State in $STATE"
+    echo "State in $STATE (ledger, lessons, runs/<ticket>/)"
     seed_state
+    allow_state_dir
     echo "Checks"
     check_tools
     echo

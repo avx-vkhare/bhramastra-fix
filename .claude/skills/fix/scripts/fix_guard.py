@@ -43,7 +43,7 @@ GENERATED = ("*.pb.go", "*zz_generated.*", "*_bpfel.go")
 COMMENT_RE = re.compile(r"^\s*(//|#).*\b(AVX-[0-9]+|PR ?#?[0-9]{4,})")
 DEP_RE = re.compile(r'^"(//|@|:)')
 SIG_HASH_LIMIT = 5 * 1024 * 1024
-ART_PREFIX = ".bhramastra/"
+ART_PREFIX = ".bhramastra/"     # legacy in-repo artifact dir; skipped if an old checkout still has one
 
 
 def run(*cmd: str, check: bool = False, **kw) -> subprocess.CompletedProcess:

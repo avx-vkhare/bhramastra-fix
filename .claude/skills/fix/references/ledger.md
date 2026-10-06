@@ -109,7 +109,7 @@ effectiveness is `lessons.py stats` (`references/lessons.md`). For anything else
 L=~/.claude/skills/fix/scripts/ledger.py
 RUN_ID=$(python3 $L start --ticket AVX-123)
 python3 $L append --run-id "$RUN_ID" --event stage_started --stage rca --data '{"iteration":1}'
-python3 $L append --run-id "$RUN_ID" --event eligibility --stage intake --data-file .bhramastra/AVX-123/eligibility.json
+python3 $L append --run-id "$RUN_ID" --event eligibility --stage intake --data-file ~/.bhramastra/runs/AVX-123/eligibility.json
 python3 $L append --run-id "$RUN_ID" --event gate_decision --stage gate1 --actor human --data '{"gate":"gate1","decision":"approve"}'
 python3 $L harvest --run-id "$RUN_ID"
 python3 $L rate --ticket AVX-123 --rating ok --note "right fix, reviewer asked for a helper"

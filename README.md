@@ -44,7 +44,8 @@ The installer does the following, and is safe to re-run:
 |---|---|
 | `~/.claude/skills/fix` (symlink) | `~/bhramastra-fix/.claude/skills/fix` — the orchestrator, scripts and references |
 | `~/.claude/agents/fix-*.md` (symlinks) | `~/bhramastra-fix/.claude/agents/fix-*.md` — the stage agents |
-| `~/.bhramastra/` | your run ledger and lessons; `lessons.jsonl` is seeded from `lessons/seed-lessons.jsonl` only if you don't have one yet |
+| `~/.bhramastra/` | everything `/fix` keeps: the ledger, the lessons (`lessons.jsonl`, seeded from `lessons/seed-lessons.jsonl` only if you don't have one yet), and per-ticket run folders in `runs/` |
+| `~/.claude/settings.json` entry | `~/.bhramastra` added to `permissions.additionalDirectories`, so agents can read and write run folders without permission prompts (the file is backed up first) |
 
 If something is already at one of those paths (for example an older copied
 install), it is moved to `~/.claude/fix-backup-<timestamp>/`, never deleted.
@@ -81,7 +82,7 @@ Every `/fix` subcommand (same list as `/fix help`):
 | Command | What it does |
 |---|---|
 | **Run** | |
-| `/fix check AVX-N [hint…]` | Is it a candidate? Intake + eligibility only; no branch or code changes (writes `.bhramastra/AVX-N/` + a ledger entry) |
+| `/fix check AVX-N [hint…]` | Is it a candidate? Intake + eligibility only; no branch or code changes (writes `~/.bhramastra/runs/AVX-N/` + a ledger entry) |
 | `/fix AVX-N [hint…]` | Full run: RCA + red test → Gate 1 → plan → Gate 2 → fix → Gate 3 → draft PR |
 | `/fix AVX-N --dry-run [hint…]` | Same, but stops before Gate 3 — nothing committed or pushed |
 | `/fix resume AVX-N [hint…]` | Continue an interrupted or halted run (a new hint replaces the old one) |
@@ -117,7 +118,7 @@ Every `/fix` subcommand (same list as `/fix help`):
 |---|---|
 | Run ledger | `~/.bhramastra/ledger.jsonl` (`BHRAMASTRA_LEDGER`) |
 | Lessons | `~/.bhramastra/lessons.jsonl` (`BHRAMASTRA_LESSONS`) |
-| Per-ticket artifacts | `<cloudn>/.bhramastra/AVX-N/` (git-excluded) |
+| Per-ticket artifacts (RCA, plan, test output, logs, review rounds) | `~/.bhramastra/runs/AVX-N/` (`BHRAMASTRA_RUNS`) |
 
 **Sharing lessons:** to share one of your approved lessons, add its line to
 `lessons/seed-lessons.jsonl` in a PR to this repo. Lesson ids are local, so
